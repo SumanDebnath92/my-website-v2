@@ -408,10 +408,20 @@ const SCENE_CAPTIONS = {
  * Particle engine (HTML5 Canvas, no dependencies)
  * ════════════════════════════════════════════════════════════════════════════ */
 
-/** Portrait two-tone blue: deep blue rgb(75,155,225) → sky blue rgb(147,210,255), 6 steps. */
-const PORTRAIT_TONES = Array.from({ length: 6 }, (_, i) => {
-  const t = i / 5;
-  return `rgb(${Math.round(75 + t * 72)},${Math.round(155 + t * 55)},${Math.round(225 + t * 30)})`;
+/**
+ * Portrait 3-stop depth gradient (12 steps):
+ * indigo/violet shadows rgb(67,56,202) → electric blue midtones rgb(59,130,246) → sky-blue highlights rgb(186,230,253).
+ */
+const PORTRAIT_STOPS = [
+  [67, 56, 202],
+  [59, 130, 246],
+  [186, 230, 253],
+];
+const PORTRAIT_TONE_STEPS = 12;
+const PORTRAIT_TONES = Array.from({ length: PORTRAIT_TONE_STEPS }, (_, i) => {
+  const t = i / (PORTRAIT_TONE_STEPS - 1);
+  const [a, b, u] = t < 0.5 ? [PORTRAIT_STOPS[0], PORTRAIT_STOPS[1], t / 0.5] : [PORTRAIT_STOPS[1], PORTRAIT_STOPS[2], (t - 0.5) / 0.5];
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * u)},${Math.round(a[1] + (b[1] - a[1]) * u)},${Math.round(a[2] + (b[2] - a[2]) * u)})`;
 });
 const PORTRAIT_TONE0 = 8;
 
@@ -425,10 +435,15 @@ type Model = {
   x: Float32Array; y: Float32Array; z: Float32Array;
   ring: Int8Array; ang: Float32Array; rad: Float32Array;
   tone: Uint8Array; alpha: Float32Array; size: Float32Array; tag: Int8Array;
+  /** Portrait only: particle indices sorted by (tone, alpha bucket) so dots draw as a few batched arc paths. */
+  order?: Uint32Array;
 };
 
-/** Normalised dot targets: x/y in 0..1 of the portrait box, s = dot radius, a = alpha. */
-type PortraitSamples = { x: Float32Array; y: Float32Array; s: Float32Array; a: Float32Array; count: number; aspect: number };
+/** Normalised dot targets: x/y in 0..1 of the portrait box, r = dot radius (px), a = alpha, c = colour position 0..1. */
+type PortraitSamples = {
+  x: Float32Array; y: Float32Array; r: Float32Array; a: Float32Array; c: Float32Array;
+  count: number; aspect: number;
+};
 
 const pt = (x: number, y: number, z: number, o: Partial<Pt> = {}): Pt => ({
   x, y, z, ring: -1, ang: 0, rad: 0, tone: 5, alpha: 0.9, size: 1.3, tag: -1, ...o,
@@ -458,19 +473,59 @@ function finalize(pts: Pt[], max: number, screen: boolean): Model {
 const rand = (a = -1, b = 1) => a + Math.random() * (b - a);
 
 /*
- * Stippled-portrait sampling — ported from the original standalone particle portrait:
+ * Stippled portrait — dot coordinates ported from the original standalone particle portrait:
  *  · regular grid (≈2px step on a 340×560 canvas → ~170 columns), each cell box-averaged
- *  · luminance threshold drops the dark background
- *  · positive shading: brighter cell → larger + more opaque dot (radius 0.25–0.95, alpha 0.04–0.97)
- *  · dark dots (radius < 0.55) get region alpha boosts so hair, collar and blazer stay visible
+ *  · luminance threshold drops the dark navy background
+ *
+ * Depth shading (rendering only — coordinates unchanged), tuned between "flat & bright" and "too dark":
+ *  · mild local-contrast relief (cell vs. blurred neighbourhood) so features read as form
+ *  · one continuous roundness falloff over head + neck + chest (smooth union of two ellipses),
+ *    so there is no brightness break between the face and the chest
+ *  · soft gamma (1.6): shadows fall to indigo, midtones stay electric blue, highlights reach sky-blue
+ *  · radius 0.6px (shadow) → 1.8px (highlight), 3-stop indigo → electric blue → sky-blue
+ *  · dark hair/blazer dots keep a floor so the silhouette stays complete
  *  · cosine fade at the bottom of the chest
  */
-const PORTRAIT_REF_H = 560; // dot radii are defined against the original 560px-tall canvas
 const PORTRAIT_THRESHOLD = 0.11; // navy background averages ≈ 0.065
-const PORTRAIT_LUM_LO = 0.1;
-const PORTRAIT_LUM_HI = 0.72;
+const PORTRAIT_GAMMA = 1.6;
+const PORTRAIT_RELIEF = 0.8; // local-contrast strength
+const PORTRAIT_FORM = 0.25; // edge falloff strength
+const PORTRAIT_ALPHA_MIN = 0.2;
+const PORTRAIT_R_MIN = 0.6;
+const PORTRAIT_R_MAX = 1.8;
+const PORTRAIT_REF_H = 700; // radii are in px for a ~700px-tall portrait; scaled for other sizes
 const CHEST_FADE_START = 0.8;
 const CHEST_FADE_END = 0.97;
+
+/** Separable gaussian blur on a single-channel grid. */
+function blurGrid(src: Float32Array, W: number, H: number, sigma: number) {
+  const rad = Math.ceil(sigma * 2);
+  const k = Array.from({ length: rad * 2 + 1 }, (_, i) => Math.exp(-((i - rad) ** 2) / (2 * sigma * sigma)));
+  const ks = k.reduce((a, b) => a + b, 0);
+  const tmp = new Float32Array(W * H);
+  const out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let s = 0;
+      for (let j = -rad; j <= rad; j++) s += src[y * W + Math.min(W - 1, Math.max(0, x + j))] * k[j + rad];
+      tmp[y * W + x] = s / ks;
+    }
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let s = 0;
+      for (let j = -rad; j <= rad; j++) s += tmp[Math.min(H - 1, Math.max(0, y + j)) * W + x] * k[j + rad];
+      out[y * W + x] = s / ks;
+    }
+  return out;
+}
+
+/** Roundness: 0 at the centre of the bust, →1 toward its silhouette. Head and torso blend smoothly through the neck. */
+function bustDistance(nx: number, ny: number) {
+  const dh = ((nx - 0.5) / 0.26) ** 2 + ((ny - 0.43) / 0.33) ** 2;
+  const dt = ((nx - 0.5) / 0.5) ** 2 + ((ny - 1.0) / 0.42) ** 2;
+  const k = 0.35;
+  return -k * Math.log(Math.exp(-dh / k) + Math.exp(-dt / k)); // smooth min
+}
 
 function samplePortrait(img: HTMLImageElement, cols: number): PortraitSamples {
   const W = cols;
@@ -484,8 +539,12 @@ function samplePortrait(img: HTMLImageElement, cols: number): PortraitSamples {
   g.drawImage(img, 0, 0, W, H);
   const data = g.getImageData(0, 0, W, H).data;
 
-  const xs = new Float32Array(W * H), ys = new Float32Array(W * H);
-  const ss = new Float32Array(W * H), as = new Float32Array(W * H);
+  const lum = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) lum[i] = (0.3 * data[i * 4] + 0.59 * data[i * 4 + 1] + 0.11 * data[i * 4 + 2]) / 255;
+  const soft = blurGrid(lum, W, H, 4 * (W / 170));
+
+  // Pass 1: same cells as the original portrait; relief + roundness adjusted brightness per dot.
+  const xs = new Float32Array(W * H), ys = new Float32Array(W * H), vs = new Float32Array(W * H);
   let count = 0;
   for (let gy = 0; gy < H; gy++) {
     for (let gx = 0; gx < W; gx++) {
@@ -493,36 +552,50 @@ function samplePortrait(img: HTMLImageElement, cols: number): PortraitSamples {
       const ny = (gy + 0.5) / H;
       // Skip the small sparkle watermark in the bottom-right corner.
       if (nx > 0.81 && nx < 0.92 && ny > 0.85 && ny < 0.95) continue;
-      const i = (gy * W + gx) * 4;
-      const lum = (0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2]) / 255;
-      if (lum < PORTRAIT_THRESHOLD) continue;
-
-      const t = Math.min(1, Math.max(0, (lum - PORTRAIT_LUM_LO) / (PORTRAIT_LUM_HI - PORTRAIT_LUM_LO)));
-      const size = 0.25 + 0.7 * Math.min(1, Math.max(0, (t - 0.22) / 0.78));
-      let alpha = 0.04 + 0.93 * t;
-
-      if (size < 0.55) {
-        if (ny < 0.22 && nx > 0.3 && nx < 0.8) alpha = Math.max(alpha, 0.78); // hair
-        else if (ny < 0.52 && (nx < 0.3 || nx > 0.72)) alpha = Math.max(alpha, 0.72); // head sides
-        else if (ny > 0.6 && ny < 0.9 && (nx < 0.42 || nx > 0.58)) alpha = Math.max(alpha, 0.68); // collar / blazer
-        else if (ny > 0.55 && (nx < 0.22 || nx > 0.78)) alpha = Math.max(alpha, 0.65); // shoulders
-        else alpha = Math.max(alpha, 0.38);
-      }
-      if (ny > CHEST_FADE_START) {
-        const f = Math.min(1, (ny - CHEST_FADE_START) / (CHEST_FADE_END - CHEST_FADE_START));
-        alpha *= 0.5 * (1 + Math.cos(Math.PI * f));
-      }
-      if (alpha < 0.015) continue;
-
-      xs[count] = nx + (Math.random() - 0.5) * 0.6 / W;
-      ys[count] = ny + (Math.random() - 0.5) * 0.6 / H;
-      ss[count] = size;
-      as[count] = alpha;
+      const l = lum[gy * W + gx];
+      if (l < PORTRAIT_THRESHOLD) continue;
+      let v = l + PORTRAIT_RELIEF * (l - soft[gy * W + gx]);
+      v *= 1 - PORTRAIT_FORM * Math.pow(Math.min(1, Math.max(0, bustDistance(nx, ny))), 1.5);
+      xs[count] = nx + ((Math.random() - 0.5) * 0.6) / W;
+      ys[count] = ny + ((Math.random() - 0.5) * 0.6) / H;
+      vs[count] = v;
       count++;
     }
   }
-  return { x: xs, y: ys, s: ss, a: as, count, aspect: W / H };
+
+  // Pass 2: robust normalisation, then the soft gamma curve.
+  const sorted = vs.slice(0, count).sort();
+  const lo = sorted[Math.floor(count * 0.02)] ?? 0;
+  const hi = sorted[Math.floor(count * 0.995)] ?? 1;
+  const rs = new Float32Array(count), as = new Float32Array(count), cs = new Float32Array(count);
+  let kept = 0;
+  for (let i = 0; i < count; i++) {
+    const nx = xs[i], ny = ys[i];
+    const t = Math.min(1, Math.max(0, (vs[i] - lo) / Math.max(1e-6, hi - lo)));
+    const gm = Math.pow(t, PORTRAIT_GAMMA);
+    let alpha = PORTRAIT_ALPHA_MIN + (1 - PORTRAIT_ALPHA_MIN) * gm;
+    if (gm < 0.25) {
+      if (ny < 0.22 && nx > 0.3 && nx < 0.8) alpha = Math.max(alpha, 0.45); // hair
+      else if (ny < 0.52 && (nx < 0.3 || nx > 0.72)) alpha = Math.max(alpha, 0.4); // head sides
+      else if (ny > 0.6 && ny < 0.9 && (nx < 0.42 || nx > 0.58)) alpha = Math.max(alpha, 0.4); // collar / blazer
+      else if (ny > 0.55 && (nx < 0.22 || nx > 0.78)) alpha = Math.max(alpha, 0.35); // shoulders
+    }
+    if (ny > CHEST_FADE_START) {
+      const f = Math.min(1, (ny - CHEST_FADE_START) / (CHEST_FADE_END - CHEST_FADE_START));
+      alpha *= 0.5 * (1 + Math.cos(Math.PI * f));
+    }
+    if (alpha < 0.015) continue;
+    xs[kept] = nx;
+    ys[kept] = ny;
+    rs[kept] = PORTRAIT_R_MIN + (PORTRAIT_R_MAX - PORTRAIT_R_MIN) * gm;
+    as[kept] = alpha;
+    cs[kept] = Math.pow(t, (PORTRAIT_GAMMA + 1) / 2);
+    kept++;
+  }
+  return { x: xs, y: ys, r: rs, a: as, c: cs, count: kept, aspect: W / H };
 }
+
+const ALPHA_BUCKETS = 16;
 
 function buildPortrait(s: PortraitSamples | null, w: number, h: number, max: number, compact: boolean): Model {
   if (!s) return finalize([], max, true);
@@ -534,20 +607,22 @@ function buildPortrait(s: PortraitSamples | null, w: number, h: number, max: num
   }
   const ox = (w - pw) / 2;
   const oy = compact ? h * 0.06 : (h - ph) / 2;
-  const scale = ph / PORTRAIT_REF_H;
+  const scale = Math.min(1.15, Math.max(0.7, ph / PORTRAIT_REF_H));
   const pts: Pt[] = [];
   for (let i = 0; i < s.count; i++) {
-    const size = s.s[i];
-    const t2 = Math.max(0, Math.min(1, (size - 0.25) / 0.7));
     pts.push(
       pt(ox + s.x[i] * pw, oy + s.y[i] * ph, 0, {
-        tone: PORTRAIT_TONE0 + Math.round(t2 * 5),
+        tone: PORTRAIT_TONE0 + Math.round(s.c[i] * (PORTRAIT_TONE_STEPS - 1)),
         alpha: s.a[i],
-        size: 2 * Math.max(0.3, size) * scale, // drawn as a square of the dot's diameter
+        size: s.r[i] * scale, // radius in px
       }),
     );
   }
-  return finalize(pts, max, true);
+  const m = finalize(pts, max, true);
+  // Pre-sort by (tone, alpha bucket): dark dots first so highlights sit on top, few fill() calls.
+  const key = (i: number) => m.tone[i] * ALPHA_BUCKETS + Math.min(ALPHA_BUCKETS - 1, Math.floor(m.alpha[i] * ALPHA_BUCKETS));
+  m.order = Uint32Array.from({ length: m.count }, (_, i) => i).sort((a, b) => key(a) - key(b));
+  return m;
 }
 
 function buildStack(max: number): Model {
@@ -1192,27 +1267,54 @@ function ParticleStage({ scene }: { scene: Scene }) {
       while (ripples.length && (nowMs - ripples[0].t0) / 1000 > 1.1) ripples.shift();
 
       /* base canvas: fade previous frame for smokey trails */
+      const portraitScene = m.screen && m.order !== undefined;
+      // Trails persist while particles swirl in; once the portrait settles the frame clears fully,
+      // so stationary dots don't stack up into a brighter, flatter face than the shading intends.
+      const settle = portraitScene ? Math.min(1, Math.max(0, (0.35 - energy) / 0.3)) : 0;
       ctx.globalCompositeOperation = "destination-out";
       ctx.globalAlpha = 1;
-      ctx.fillStyle = `rgba(0,0,0,${still ? 1 : 0.24})`;
+      ctx.fillStyle = `rgba(0,0,0,${still ? 1 : 0.24 + 0.76 * settle})`;
       ctx.fillRect(0, 0, w, h);
 
-      ctx.globalCompositeOperation = "lighter";
+      // Soft smoke: additive glow elsewhere, plain blending over the portrait (no glow stacking on the face).
+      ctx.globalCompositeOperation = portraitScene ? "source-over" : "lighter";
       const smokeEnd = Math.min(N, m.count + 650);
       for (let i = m.count; i < smokeEnd; i++) {
         const size = 10 + (i % 7) * 3;
-        ctx.globalAlpha = 0.035 + (i % 5) * 0.008;
+        ctx.globalAlpha = (0.035 + (i % 5) * 0.008) * (portraitScene ? 0.6 : 1);
         ctx.drawImage(sprites[ptone[i] < 4 ? 1 : 0], px[i] - size / 2, py[i] - size / 2, size, size);
       }
 
       ctx.globalCompositeOperation = "source-over";
-      for (let b = 0; b < PALETTE.length; b++) {
-        ctx.fillStyle = PALETTE[b];
-        for (let i = 0; i < m.count; i++) {
-          if (m.tone[i] !== b) continue;
-          ctx.globalAlpha = drawA[i];
-          const sz = drawS[i];
-          ctx.fillRect(px[i] - sz / 2, py[i] - sz / 2, sz, sz);
+      if (portraitScene) {
+        // Round stipple dots, batched by (tone, alpha bucket) — darkest first, highlights on top.
+        const order = m.order!;
+        let cur = -1;
+        for (let j = 0; j < m.count; j++) {
+          const i = order[j];
+          const ab = Math.min(ALPHA_BUCKETS - 1, Math.floor(m.alpha[i] * ALPHA_BUCKETS));
+          const k = m.tone[i] * ALPHA_BUCKETS + ab;
+          if (k !== cur) {
+            if (cur >= 0) ctx.fill();
+            cur = k;
+            ctx.fillStyle = PALETTE[m.tone[i]];
+            ctx.globalAlpha = (ab + 0.5) / ALPHA_BUCKETS;
+            ctx.beginPath();
+          }
+          const r = drawS[i];
+          ctx.moveTo(px[i] + r, py[i]);
+          ctx.arc(px[i], py[i], r, 0, Math.PI * 2);
+        }
+        if (cur >= 0) ctx.fill();
+      } else {
+        for (let b = 0; b < PALETTE.length; b++) {
+          ctx.fillStyle = PALETTE[b];
+          for (let i = 0; i < m.count; i++) {
+            if (m.tone[i] !== b) continue;
+            ctx.globalAlpha = drawA[i];
+            const sz = drawS[i];
+            ctx.fillRect(px[i] - sz / 2, py[i] - sz / 2, sz, sz);
+          }
         }
       }
       ctx.globalAlpha = 1;
@@ -1499,18 +1601,78 @@ function StageScroller({
   onMoreChange: (more: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
   const [more, setMore] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const reduce = useReducedMotion();
   const gesture = useRef({ lastWheel: 0, edgeDir: 0, lockUntil: 0, touchY: 0, touchTop: false, touchBottom: false });
+  const drag = useRef({ startY: 0, startScroll: 0 });
 
   const measure = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    const of = el.scrollHeight - el.clientHeight > 4;
+    const max = el.scrollHeight - el.clientHeight;
+    const of = max > 4;
+    const remaining = max - el.scrollTop;
     setOverflow(of);
-    setMore(of && el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+    setMore(of && remaining > 8);
+
+    // Soft edge fades instead of a hard cut: grow with distance scrolled / distance remaining.
+    const top = of ? Math.min(56, el.scrollTop) : 0;
+    const bottom = of ? Math.min(80, Math.max(0, remaining)) : 0;
+    const mask =
+      top || bottom
+        ? `linear-gradient(to bottom, transparent 0, #000 ${top}px, #000 calc(100% - ${bottom}px), transparent 100%)`
+        : "none";
+    el.style.maskImage = mask;
+    el.style.webkitMaskImage = mask;
+
+    // Capsule position on the divider rail.
+    const track = trackRef.current;
+    const thumb = thumbRef.current;
+    if (track && thumb && of) {
+      const travel = track.clientHeight - thumb.offsetHeight;
+      thumb.style.transform = `translateY(${(el.scrollTop / max) * travel}px)`;
+      thumb.setAttribute("aria-valuenow", String(Math.round((el.scrollTop / max) * 100)));
+    }
   }, []);
+
+  const travelRatio = () => {
+    const el = ref.current!;
+    const travel = trackRef.current!.clientHeight - thumbRef.current!.offsetHeight;
+    return (el.scrollHeight - el.clientHeight) / Math.max(1, travel);
+  };
+
+  const onThumbDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { startY: e.clientY, startScroll: ref.current!.scrollTop };
+    setDragging(true);
+  };
+  const onThumbMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    ref.current!.scrollTop = drag.current.startScroll + (e.clientY - drag.current.startY) * travelRatio();
+  };
+  const onThumbUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    setDragging(false);
+  };
+  const onTrackDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const track = trackRef.current!;
+    const thumb = thumbRef.current!;
+    const y = e.clientY - track.getBoundingClientRect().top - thumb.offsetHeight / 2;
+    ref.current!.scrollTo({ top: y * travelRatio(), behavior: reduce ? "instant" : "smooth" });
+  };
+  const onThumbKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const el = ref.current!;
+    const step = { ArrowDown: 60, ArrowUp: -60, PageDown: el.clientHeight * 0.8, PageUp: -el.clientHeight * 0.8 }[e.key];
+    if (step === undefined) return;
+    e.preventDefault();
+    el.scrollBy({ top: step, behavior: reduce ? "instant" : "smooth" });
+  };
 
   useEffect(() => {
     onMoreChange(more);
@@ -1592,32 +1754,31 @@ function StageScroller({
     if (el) el.scrollBy({ top: el.clientHeight * 0.7, behavior: reduce ? "instant" : "smooth" });
   };
 
-  return (
-    <div className="relative">
-      <div
-        ref={ref}
-        onScroll={measure}
-        onWheel={onWheel}
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
-        className={`scroll-sleek max-h-[82vh] overflow-y-auto pr-2 ${overflow ? "overscroll-contain" : ""}`}
-      >
-        {children}
-        {overflow && <div aria-hidden className="h-10" />}
-      </div>
+  useEffect(() => {
+    // Place the capsule once the rail has rendered.
+    if (!overflow) return;
+    const raf = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(raf);
+  }, [overflow, measure]);
 
-      <AnimatePresence>
-        {more && (
-          <>
-            <motion.div
-              key="fade"
-              aria-hidden
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-bg via-bg/75 to-transparent"
-            />
+  return (
+    <>
+      <div className="relative">
+        <div
+          ref={ref}
+          id="stage-scroll"
+          onScroll={measure}
+          onWheel={onWheel}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          className={`no-scrollbar max-h-[82vh] overflow-y-auto pr-2 ${overflow ? "overscroll-contain" : ""}`}
+        >
+          {children}
+          {overflow && <div aria-hidden className="h-10" />}
+        </div>
+
+        <AnimatePresence>
+          {more && (
             <motion.button
               key="more"
               type="button"
@@ -1626,7 +1787,7 @@ function StageScroller({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.25 }}
-              className="glass absolute bottom-2 left-1/2 flex min-h-9 -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full px-3.5 font-mono text-[11px] tracking-wider whitespace-nowrap text-fg-soft uppercase transition-colors duration-200 hover:border-primary/40 hover:text-fg"
+              className="glass absolute -bottom-12 left-1/2 flex min-h-9 -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full px-3.5 font-mono text-[11px] tracking-wider whitespace-nowrap text-fg-soft uppercase transition-colors duration-200 hover:border-primary/40 hover:text-fg"
             >
               <Mouse className="h-3.5 w-3.5 text-primary" aria-hidden />
               Scroll for more
@@ -1638,10 +1799,54 @@ function StageScroller({
                 <ChevronDown className="h-3.5 w-3.5 text-secondary" />
               </motion.span>
             </motion.button>
-          </>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Scroll rail: a small outlined capsule riding on the thin divider between the two panels.
+          Positioned against the stage section (this fragment has no positioned wrapper). */}
+      <AnimatePresence>
+        {overflow && (
+          <motion.div
+            key="rail"
+            ref={trackRef}
+            onPointerDown={onTrackDown}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute top-[12%] right-1.5 bottom-[12%] z-10 w-5 cursor-pointer lg:right-0 lg:translate-x-1/2"
+          >
+            {/* Track line only on small screens — on desktop the panel divider is the track. */}
+            <span aria-hidden className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-primary/30 to-transparent lg:hidden" />
+            <div
+              ref={thumbRef}
+              role="scrollbar"
+              aria-controls="stage-scroll"
+              aria-orientation="vertical"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={0}
+              aria-label="Scroll section content"
+              tabIndex={0}
+              onPointerDown={onThumbDown}
+              onPointerMove={onThumbMove}
+              onPointerUp={onThumbUp}
+              onPointerCancel={onThumbUp}
+              onKeyDown={onThumbKey}
+              className={`group absolute top-0 left-0 flex h-11 w-5 touch-none items-center justify-center outline-none ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
+            >
+              <span
+                aria-hidden
+                className={`block h-full w-2.5 rounded-full border transition-[border-color,box-shadow] duration-200 group-hover:border-primary group-hover:shadow-[0_0_12px_2px_rgb(34_211_238/0.45)] group-focus-visible:border-primary group-focus-visible:shadow-[0_0_12px_2px_rgb(34_211_238/0.45)] ${
+                  dragging ? "border-primary shadow-[0_0_14px_3px_rgb(167_139_250/0.5)]" : "border-primary/70"
+                }`}
+              />
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }
 
@@ -1815,7 +2020,7 @@ function ProgressDots({
 
 function StageCounter({ active }: { active: number }) {
   return (
-    <div className="pointer-events-none absolute bottom-5 left-4 z-30 hidden items-center gap-3 font-mono text-xs text-muted sm:left-8 sm:flex">
+    <div className="pointer-events-none absolute top-5 left-4 z-30 hidden items-center gap-3 font-mono text-xs text-muted sm:left-8 sm:flex">
       <span className="text-fg">
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.span
