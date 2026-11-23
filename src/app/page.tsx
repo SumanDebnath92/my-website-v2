@@ -1195,7 +1195,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
         octx.moveTo(x1, y1);
         octx.lineTo(x2, y2);
         octx.stroke();
-        return { a, b, tag, x1, y1, x2, y2, rgb };
+        return { a, b, tag, x1, y1, x2, y2, rgb, mux: (e.x1 + e.x2) / 2, muy: (e.y1 + e.y2) / 2 };
       });
 
       // Travelling signals
@@ -1208,15 +1208,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
           const k = ease(u);
           dot(e.x1 + (e.x2 - e.x1) * k, e.y1 + (e.y2 - e.y1) * k, e.tag ? e.rgb : "224,242,254");
         }
-        if (e.tag) {
-          const mxp = (e.x1 + e.x2) / 2, myp = (e.y1 + e.y2) / 2;
-          octx.fillStyle = "rgba(5,7,13,0.9)";
-          octx.fillRect(mxp - 16, myp - 9, 32, 17);
-          octx.strokeStyle = `rgba(${e.rgb},0.7)`;
-          octx.lineWidth = 1;
-          octx.strokeRect(mxp - 16, myp - 9, 32, 17);
-          label(e.tag, mxp, myp + 3.5, compact ? 9 : 10.5, `rgb(${e.rgb})`, 700);
-        }
+        if (e.tag) planeTag(v, e.mux, e.muy, e.tag, e.rgb, true);
       }
 
       // Nodes
@@ -1236,47 +1228,113 @@ function ParticleStage({ scene }: { scene: Scene }) {
         octx.lineWidth = 1 + glow * 1.2;
         octx.stroke();
 
-        project(n.x - hw + 0.075, n.y, 0, v);
-        const ix = P.x, iy = P.y, s = P.s;
-        const iconSize = (compact ? 15 : 19) * s;
-        if (n.icon) drawIcon(n.icon, ix, iy, iconSize, glow > 0 ? "#ddd6fe" : "#7dd3fc");
-        project(n.x + 0.06, n.y, 0, v);
-        label(n.label, P.x, P.y - 2 * s, Math.round((compact ? 10 : 12) * s), glow > 0 ? "#ede9fe" : "#f1f5f9", 600);
-        if (n.sub) label(n.sub, P.x, P.y + 12 * s, Math.round((compact ? 8.5 : 10) * s), "rgba(148,163,184,0.95)");
+        // Icon + text drawn on the window plane, so they tilt with the box.
+        const iconSize = compact ? 15 : 19;
+        const iconUx = n.x - hw + 0.075;
+        if (n.icon) planeIcon(v, n.icon, iconUx, n.y, iconSize, glow > 0 ? "#ddd6fe" : "#7dd3fc");
+        const textUx = n.x + 0.06;
+        const textMaxW = (hw * 2 - 0.15) * v.R - 8;
+        planeText(v, n.label, textUx, n.y, compact ? 10 : 12, glow > 0 ? "#ede9fe" : "#f1f5f9", 600, "center", textMaxW, n.sub ? -6 : 0);
+        if (n.sub) planeText(v, n.sub, textUx, n.y, compact ? 8.5 : 10, "rgba(148,163,184,0.95)", 500, "center", textMaxW, 9);
 
-        // Trigger fired: expanding ring + "+1 contact" chip rising off the node.
+        // Trigger fired: expanding outline + "+1 contact" chip rising off the node (both on the plane).
         if (n.id === "t" && act >= 0) {
-          project(n.x, n.y, 0, v);
-          const cx = P.x, cy = P.y;
+          const grow = (6 + act * 18) / v.R;
+          planeRect(v, n.x, n.y, hw + grow, NODE_HH + grow);
           octx.strokeStyle = `rgba(34,211,238,${(1 - act) * 0.7})`;
           octx.lineWidth = 1.5;
-          octx.beginPath();
-          octx.ellipse(cx, cy, (hw * v.R + 6) * (1 + act * 0.35), (NODE_HH * v.R + 6) * (1 + act * 0.9), 0, 0, Math.PI * 2);
           octx.stroke();
-          const chipY = cy - NODE_HH * v.R - 14 - act * 18;
+          const chipUy = n.y - NODE_HH - (22 + act * 18) / v.R;
           octx.globalAlpha = blend * Math.sin(Math.PI * act);
+          planeRect(v, n.x, chipUy, 56 / v.R, 10 / v.R);
           octx.fillStyle = "rgba(34,197,94,0.16)";
-          octx.strokeStyle = "rgba(34,197,94,0.8)";
-          octx.beginPath();
-          octx.roundRect(cx - 52, chipY - 11, 104, 20, 10);
           octx.fill();
+          octx.strokeStyle = "rgba(34,197,94,0.8)";
+          octx.lineWidth = 1;
           octx.stroke();
-          label("+1 contact added", cx, chipY + 3, compact ? 9 : 10.5, "#86efac", 600);
+          planeText(v, "+1 contact added", n.x, chipUy, compact ? 9 : 10.5, "#86efac", 600, "center");
           octx.globalAlpha = blend;
         }
 
-        // Sent: the channel icon flies out of the node and fades away.
+        // Sent: the channel icon flies out of the node and fades away (moving across the plane).
         const sending = n.id.startsWith("e") || n.id.startsWith("s") ? act : -1;
-        if (sending >= 0) {
+        if (sending >= 0 && n.icon) {
           const side = n.x < 0 ? -1 : 1;
           const k = ease(sending);
-          const fx = ix + side * (k * (compact ? 50 : 80)) + (side < 0 ? 0 : (hw * 2 - 0.15) * v.R * s);
-          const fy = iy - k * (compact ? 34 : 52);
+          const startUx = side < 0 ? iconUx : n.x + hw - 0.075;
+          const fx = startUx + side * k * ((compact ? 50 : 80) / v.R);
+          const fy = n.y - k * ((compact ? 34 : 52) / v.R);
           octx.globalAlpha = blend * (1 - sending);
-          drawIcon(n.icon!, fx, fy, iconSize * (1 + 0.35 * k), n.icon === "flow:mail" ? "#bae6fd" : "#c4b5fd");
+          planeIcon(v, n.icon, fx, fy, iconSize * (1 + 0.35 * k), n.icon === "flow:mail" ? "#bae6fd" : "#c4b5fd");
           octx.globalAlpha = blend;
         }
       }
+    };
+
+    /**
+     * Text laid on the tilted z=0 plane: the local projection of the plane's x/y axes at (ux, uy)
+     * becomes the text transform, so the text skews, scales and moves exactly with the window.
+     * Font size is in px at plane scale; text is shrunk to fit `maxW` (plane px) when given.
+     */
+    /** Run `draw` in the local coordinate frame of the tilted plane at (ux, uy): 1 unit = 1 plane px. */
+    const onPlane = (v: View, ux: number, uy: number, draw: () => void) => {
+      const e = 0.02;
+      project(ux, uy, 0, v);
+      const ox = P.x, oy = P.y;
+      project(ux + e, uy, 0, v);
+      const ax = (P.x - ox) / (e * v.R), ay = (P.y - oy) / (e * v.R);
+      project(ux, uy + e, 0, v);
+      const bx = (P.x - ox) / (e * v.R), by = (P.y - oy) / (e * v.R);
+      octx.save();
+      octx.transform(ax, ay, bx, by, ox, oy);
+      draw();
+      octx.restore();
+    };
+
+    const planeText = (
+      v: View, text: string, ux: number, uy: number, size: number, color: string,
+      weight = 500, align: CanvasTextAlign = "left", maxW?: number, dy = 0,
+    ) => {
+      onPlane(v, ux, uy, () => {
+        octx.font = `${weight} ${size}px ${mono}`;
+        if (maxW) {
+          const wNow = octx.measureText(text).width;
+          if (wNow > maxW) octx.font = `${weight} ${Math.max(7, (size * maxW) / wNow)}px ${mono}`;
+        }
+        octx.textAlign = align;
+        octx.textBaseline = "middle";
+        octx.fillStyle = color;
+        octx.fillText(text, 0, dy);
+      });
+    };
+
+    /** Icon drawn flat on the tilted plane, centred at (ux, uy). */
+    const planeIcon = (v: View, name: string, ux: number, uy: number, size: number, color: string) => {
+      onPlane(v, ux, uy, () => drawIcon(name, 0, 0, size, color));
+    };
+
+    /** Axis-aligned rectangle on the plane (unit coords), returned as a path ready to fill/stroke. */
+    const planeRect = (v: View, cx: number, cy: number, hwU: number, hhU: number) => {
+      octx.beginPath();
+      ([[cx - hwU, cy - hhU], [cx + hwU, cy - hhU], [cx + hwU, cy + hhU], [cx - hwU, cy + hhU]] as const).forEach(([x, y], i) => {
+        project(x, y, 0, v);
+        if (i === 0) octx.moveTo(P.x, P.y);
+        else octx.lineTo(P.x, P.y);
+      });
+      octx.closePath();
+    };
+
+    /** Small branch tag ("yes", "no", "1", …) sitting on an edge's midpoint, on the plane. */
+    const planeTag = (v: View, ux: number, uy: number, text: string, rgb: string, bordered: boolean) => {
+      planeRect(v, ux, uy, 16 / v.R, 9 / v.R);
+      octx.fillStyle = "rgba(5,7,13,0.9)";
+      octx.fill();
+      if (bordered) {
+        octx.strokeStyle = `rgba(${rgb},0.7)`;
+        octx.lineWidth = 1;
+        octx.stroke();
+      }
+      planeText(v, text, ux, uy, compact ? 9 : 10.5, `rgb(${rgb})`, 700, "center");
     };
 
     const drawFlowOverlay = (v: View, index: number) => {
@@ -1303,14 +1361,20 @@ function ParticleStage({ scene }: { scene: Scene }) {
         octx.fill();
         octx.globalAlpha = blend;
       });
-      project(-0.78, -0.835, 0, v);
-      label(`${f.url} — ${f.title}`, P.x, P.y + 3, compact ? 9 : 11, "rgba(148,163,184,0.95)", 500, "left");
-      project(0.96, -0.835, 0, v);
+      // Title bar text is drawn *on the window plane* so it tilts and moves with the window.
+      const titleSize = compact ? 9 : 11;
+      const liveSize = compact ? 9 : 10;
+      octx.font = `600 ${liveSize}px ${mono}`;
+      const liveW = octx.measureText("live").width;
+      // Title spans from just after the traffic lights to just before the "live" tag.
+      const titleMaxW = (1.66 * v.R) - liveW - 28;
+      planeText(v, `${f.url} — ${f.title}`, -0.8, -0.84, titleSize, "rgba(148,163,184,0.95)", 500, "left", titleMaxW);
+      planeText(v, "live", 0.95, -0.84, liveSize, "rgba(134,239,172,0.95)", 600, "right");
+      project(0.95 - (liveW + 9) / v.R, -0.84, 0, v);
       octx.fillStyle = "#22c55e";
       octx.beginPath();
-      octx.arc(P.x - 34, P.y, 3, 0, Math.PI * 2);
+      octx.arc(P.x, P.y, 3 * P.s, 0, Math.PI * 2);
       octx.fill();
-      label("live", P.x, P.y + 3, compact ? 9 : 10, "rgba(134,239,172,0.95)", 600, "right");
 
       if (f.script) {
         drawScriptedFlow(v, f, poly);
@@ -1343,13 +1407,9 @@ function ParticleStage({ scene }: { scene: Scene }) {
           octx.arc(x, y, 2.2, 0, Math.PI * 2);
           octx.fill();
         }
-        if (tag) {
-          const mxp = (x1 + x2) / 2, myp = (y1 + y2) / 2;
-          octx.fillStyle = "rgba(5,7,13,0.85)";
-          octx.fillRect(mxp - 14, myp - 9, 28, 16);
-          label(tag, mxp, myp + 3, compact ? 9 : 10, "#c4b5fd", 600);
-        }
+        if (tag) planeTag(v, (e.x1 + e.x2) / 2, (e.y1 + e.y2) / 2, tag, "196,181,253", false);
       });
+      const textMaxW = NODE_HW * 2 * v.R - 10;
       f.nodes.forEach((n, ni) => {
         poly([[n.x - NODE_HW, n.y - NODE_HH], [n.x + NODE_HW, n.y - NODE_HH], [n.x + NODE_HW, n.y + NODE_HH], [n.x - NODE_HW, n.y + NODE_HH]]);
         octx.fillStyle = "rgba(11,16,32,0.72)";
@@ -1358,10 +1418,9 @@ function ParticleStage({ scene }: { scene: Scene }) {
         octx.strokeStyle = on ? "rgba(167,139,250,0.95)" : "rgba(125,211,252,0.35)";
         octx.lineWidth = on ? 1.6 : 1;
         octx.stroke();
-        project(n.x, n.y, 0, v);
-        const s = P.s;
-        label(n.label, P.x, P.y - (n.sub ? 2 : -4) * s, Math.round((compact ? 10 : 12) * s), on ? "#ede9fe" : "#f1f5f9", 600);
-        if (n.sub) label(n.sub, P.x, P.y + 12 * s, Math.round((compact ? 8.5 : 10) * s), "rgba(148,163,184,0.95)");
+        // Text on the window plane, shrunk to fit inside the box.
+        planeText(v, n.label, n.x, n.y, compact ? 10 : 12, on ? "#ede9fe" : "#f1f5f9", 600, "center", textMaxW, n.sub ? -6 : 0);
+        if (n.sub) planeText(v, n.sub, n.x, n.y, compact ? 8.5 : 10, "rgba(148,163,184,0.95)", 500, "center", textMaxW, 9);
       });
     };
 
@@ -1499,7 +1558,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
           }
           for (let r = 0; r < ripples.length; r++) {
             const rp = ripples[r];
-            const age = (nowMs - rp.t0) / 1000;
+            const age = Math.max(0, (nowMs - rp.t0) / 1000); // pointer events can land after the frame timestamp
             if (age > 1.1) continue;
             const dx = x - rp.x, dy = y - rp.y;
             const d = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -1591,7 +1650,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
       }
       octx.globalAlpha = 1;
       for (const rp of ripples) {
-        const age = (nowMs - rp.t0) / 1000;
+        const age = Math.max(0, (nowMs - rp.t0) / 1000); // pointer events can land after the frame timestamp
         octx.strokeStyle = `rgba(125,211,252,${Math.max(0, (1 - age / 1.1) * 0.35 * rp.k)})`;
         octx.lineWidth = 1;
         octx.beginPath();
@@ -2033,7 +2092,7 @@ function StageScroller({
           onWheel={onWheel}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
-          className={`no-scrollbar max-h-[82vh] overflow-y-auto pr-2 ${overflow ? "overscroll-contain" : ""}`}
+          className={`no-scrollbar -mx-4 -my-3 max-h-[calc(82vh+1.5rem)] overflow-y-auto px-4 py-3 ${overflow ? "overscroll-contain" : ""}`}
         >
           {children}
           {overflow && <div aria-hidden className="h-10" />}
