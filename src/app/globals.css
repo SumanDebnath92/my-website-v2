@@ -86,6 +86,27 @@ body {
   }
 }
 
+/* Thin blue → violet scrollbar for the left content panel */
+@utility scroll-sleek {
+  scroll-behavior: smooth;
+  &::-webkit-scrollbar {
+    width: 5px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgb(255 255 255 / 0.03);
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(to bottom, var(--color-primary), var(--color-secondary));
+    border-radius: 999px;
+  }
+  /* Firefox (no gradient support): thin violet-blue thumb */
+  @supports not selector(::-webkit-scrollbar) {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(129 140 248 / 0.7) transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-snap-type: y proximity;

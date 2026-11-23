@@ -408,7 +408,14 @@ const SCENE_CAPTIONS = {
  * Particle engine (HTML5 Canvas, no dependencies)
  * ════════════════════════════════════════════════════════════════════════════ */
 
-const PALETTE = ["#7c3aed", "#8b5cf6", "#a78bfa", "#818cf8", "#60a5fa", "#38bdf8", "#7dd3fc", "#bae6fd"];
+/** Portrait two-tone blue: deep blue rgb(75,155,225) → sky blue rgb(147,210,255), 6 steps. */
+const PORTRAIT_TONES = Array.from({ length: 6 }, (_, i) => {
+  const t = i / 5;
+  return `rgb(${Math.round(75 + t * 72)},${Math.round(155 + t * 55)},${Math.round(225 + t * 30)})`;
+});
+const PORTRAIT_TONE0 = 8;
+
+const PALETTE = ["#7c3aed", "#8b5cf6", "#a78bfa", "#818cf8", "#60a5fa", "#38bdf8", "#7dd3fc", "#bae6fd", ...PORTRAIT_TONES];
 
 type Pt = { x: number; y: number; z: number; ring: number; ang: number; rad: number; tone: number; alpha: number; size: number; tag: number };
 
@@ -420,7 +427,8 @@ type Model = {
   tone: Uint8Array; alpha: Float32Array; size: Float32Array; tag: Int8Array;
 };
 
-type PortraitSamples = { x: Float32Array; y: Float32Array; b: Float32Array; count: number; aspect: number };
+/** Normalised dot targets: x/y in 0..1 of the portrait box, s = dot radius, a = alpha. */
+type PortraitSamples = { x: Float32Array; y: Float32Array; s: Float32Array; a: Float32Array; count: number; aspect: number };
 
 const pt = (x: number, y: number, z: number, o: Partial<Pt> = {}): Pt => ({
   x, y, z, ring: -1, ang: 0, rad: 0, tone: 5, alpha: 0.9, size: 1.3, tag: -1, ...o,
@@ -449,62 +457,93 @@ function finalize(pts: Pt[], max: number, screen: boolean): Model {
 
 const rand = (a = -1, b = 1) => a + Math.random() * (b - a);
 
-/** Sample the light sky-blue areas of the portrait; the dark navy background is ignored. */
-function samplePortrait(img: HTMLImageElement, n: number): PortraitSamples {
-  const W = 240;
+/*
+ * Stippled-portrait sampling — ported from the original standalone particle portrait:
+ *  · regular grid (≈2px step on a 340×560 canvas → ~170 columns), each cell box-averaged
+ *  · luminance threshold drops the dark background
+ *  · positive shading: brighter cell → larger + more opaque dot (radius 0.25–0.95, alpha 0.04–0.97)
+ *  · dark dots (radius < 0.55) get region alpha boosts so hair, collar and blazer stay visible
+ *  · cosine fade at the bottom of the chest
+ */
+const PORTRAIT_REF_H = 560; // dot radii are defined against the original 560px-tall canvas
+const PORTRAIT_THRESHOLD = 0.11; // navy background averages ≈ 0.065
+const PORTRAIT_LUM_LO = 0.1;
+const PORTRAIT_LUM_HI = 0.72;
+const CHEST_FADE_START = 0.8;
+const CHEST_FADE_END = 0.97;
+
+function samplePortrait(img: HTMLImageElement, cols: number): PortraitSamples {
+  const W = cols;
   const H = Math.round((W * img.naturalHeight) / img.naturalWidth);
   const c = document.createElement("canvas");
   c.width = W;
   c.height = H;
   const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high"; // box-average each grid cell
   g.drawImage(img, 0, 0, W, H);
   const data = g.getImageData(0, 0, W, H).data;
-  const weights = new Float32Array(W * H);
-  for (let i = 0; i < W * H; i++) {
-    const px = i % W;
-    const py = (i / W) | 0;
-    // Skip the small sparkle watermark in the bottom-right corner.
-    if (px > W * 0.81 && py > H * 0.85 && px < W * 0.92 && py < H * 0.95) continue;
-    const r = data[i * 4], gg = data[i * 4 + 1], b = data[i * 4 + 2];
-    const lum = (0.3 * r + 0.59 * gg + 0.11 * b) / 255;
-    const t = Math.min(1, Math.max(0, (lum - 0.2) / 0.6));
-    weights[i] = Math.pow(t * t * (3 - 2 * t), 1.6); // contrast-weighted smoothstep: bg ≈ 0, sky-blue ≈ 1
-  }
-  const xs = new Float32Array(n), ys = new Float32Array(n), bs = new Float32Array(n);
+
+  const xs = new Float32Array(W * H), ys = new Float32Array(W * H);
+  const ss = new Float32Array(W * H), as = new Float32Array(W * H);
   let count = 0;
-  let guard = 0;
-  while (count < n && guard < n * 60) {
-    guard++;
-    const i = (Math.random() * W * H) | 0;
-    const w = weights[i];
-    if (w <= 0 || Math.random() > w) continue;
-    xs[count] = ((i % W) + Math.random()) / W;
-    ys[count] = (((i / W) | 0) + Math.random()) / H;
-    bs[count] = w;
-    count++;
+  for (let gy = 0; gy < H; gy++) {
+    for (let gx = 0; gx < W; gx++) {
+      const nx = (gx + 0.5) / W;
+      const ny = (gy + 0.5) / H;
+      // Skip the small sparkle watermark in the bottom-right corner.
+      if (nx > 0.81 && nx < 0.92 && ny > 0.85 && ny < 0.95) continue;
+      const i = (gy * W + gx) * 4;
+      const lum = (0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2]) / 255;
+      if (lum < PORTRAIT_THRESHOLD) continue;
+
+      const t = Math.min(1, Math.max(0, (lum - PORTRAIT_LUM_LO) / (PORTRAIT_LUM_HI - PORTRAIT_LUM_LO)));
+      const size = 0.25 + 0.7 * Math.min(1, Math.max(0, (t - 0.22) / 0.78));
+      let alpha = 0.04 + 0.93 * t;
+
+      if (size < 0.55) {
+        if (ny < 0.22 && nx > 0.3 && nx < 0.8) alpha = Math.max(alpha, 0.78); // hair
+        else if (ny < 0.52 && (nx < 0.3 || nx > 0.72)) alpha = Math.max(alpha, 0.72); // head sides
+        else if (ny > 0.6 && ny < 0.9 && (nx < 0.42 || nx > 0.58)) alpha = Math.max(alpha, 0.68); // collar / blazer
+        else if (ny > 0.55 && (nx < 0.22 || nx > 0.78)) alpha = Math.max(alpha, 0.65); // shoulders
+        else alpha = Math.max(alpha, 0.38);
+      }
+      if (ny > CHEST_FADE_START) {
+        const f = Math.min(1, (ny - CHEST_FADE_START) / (CHEST_FADE_END - CHEST_FADE_START));
+        alpha *= 0.5 * (1 + Math.cos(Math.PI * f));
+      }
+      if (alpha < 0.015) continue;
+
+      xs[count] = nx + (Math.random() - 0.5) * 0.6 / W;
+      ys[count] = ny + (Math.random() - 0.5) * 0.6 / H;
+      ss[count] = size;
+      as[count] = alpha;
+      count++;
+    }
   }
-  return { x: xs, y: ys, b: bs, count, aspect: W / H };
+  return { x: xs, y: ys, s: ss, a: as, count, aspect: W / H };
 }
 
 function buildPortrait(s: PortraitSamples | null, w: number, h: number, max: number, compact: boolean): Model {
   if (!s) return finalize([], max, true);
-  let ph = h * (compact ? 0.62 : 0.86);
+  let ph = h * (compact ? 0.62 : 0.88);
   let pw = ph * s.aspect;
-  if (pw > w * 0.92) {
-    pw = w * 0.92;
+  if (pw > w * 0.88) {
+    pw = w * 0.88;
     ph = pw / s.aspect;
   }
   const ox = (w - pw) / 2;
-  const oy = compact ? h * 0.06 : (h - ph) / 2 + h * 0.02;
+  const oy = compact ? h * 0.06 : (h - ph) / 2;
+  const scale = ph / PORTRAIT_REF_H;
   const pts: Pt[] = [];
-  for (let i = 0; i < Math.min(s.count, max); i++) {
-    const b = s.b[i];
-    const violet = Math.random() < 0.14;
+  for (let i = 0; i < s.count; i++) {
+    const size = s.s[i];
+    const t2 = Math.max(0, Math.min(1, (size - 0.25) / 0.7));
     pts.push(
       pt(ox + s.x[i] * pw, oy + s.y[i] * ph, 0, {
-        tone: violet ? (Math.random() * 3) | 0 : Math.min(7, 3 + Math.round(b * 4)),
-        alpha: 0.25 + 0.75 * b,
-        size: 0.75 + b * 0.95,
+        tone: PORTRAIT_TONE0 + Math.round(t2 * 5),
+        alpha: s.a[i],
+        size: 2 * Math.max(0.3, size) * scale, // drawn as a square of the dot's diameter
       }),
     );
   }
@@ -706,7 +745,9 @@ function ParticleStage({ scene }: { scene: Scene }) {
     const still = Boolean(reduce);
 
     const compact = window.innerWidth < 1024;
-    const N = window.innerWidth < 640 ? 1800 : compact ? 2600 : 4400;
+    // Grid columns follow the original portrait density (~170 cols on desktop); lighter on small screens.
+    const PORTRAIT_COLS = window.innerWidth < 640 ? 100 : compact ? 120 : 170;
+    const N = window.innerWidth < 640 ? 5600 : compact ? 7800 : 15200;
     const FREE_MIN = 260;
     const MAX_PTS = N - FREE_MIN;
 
@@ -784,7 +825,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
     img.decoding = "async";
     img.src = "/profile.png";
     img.onload = () => {
-      portrait = samplePortrait(img, MAX_PTS);
+      portrait = samplePortrait(img, PORTRAIT_COLS);
       if (sceneRef.current.kind === "portrait") remodel(true);
     };
 
@@ -1336,6 +1377,7 @@ export default function Home() {
   const [activeGroup, setActiveGroup] = useState(-1);
   const [activeProject, setActiveProject] = useState(0);
   const [workTab, setWorkTab] = useState<WorkTab>("projects");
+  const [hasMore, setHasMore] = useState(false);
 
   const scene: Scene =
     index === 0
@@ -1367,59 +1409,67 @@ export default function Home() {
       <div className="fixed inset-0 overflow-hidden">
         <AmbientBackdrop progress={progress} stage={index} />
 
-        {/* Right: dynamic graphical stage (full-bleed, dimmed backdrop on mobile) */}
-        <motion.div
-          className="absolute inset-0 opacity-70 lg:left-1/2 lg:opacity-100"
-          style={{ y: visualY }}
-        >
-          <NebulaSmoke />
-          <ParticleStage scene={scene} />
-          <div aria-hidden className="pointer-events-none absolute inset-y-[12%] left-0 hidden w-px bg-gradient-to-b from-transparent via-primary/30 to-transparent lg:block" />
-          <SceneCaption scene={scene} />
-        </motion.div>
-        {/* Keep left text readable over the backdrop on small screens */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-bg/20 via-bg/60 to-bg/85 lg:hidden" />
+        {/* Desktop: 7/12 content · 5/12 graphics. Mobile: graphics become a dimmed full-bleed backdrop. */}
+        <div className="absolute inset-0 lg:grid lg:grid-cols-12 lg:grid-rows-1">
+          {/* Right: dynamic graphical stage */}
+          <motion.div
+            className="absolute inset-0 opacity-70 lg:relative lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:opacity-100"
+            style={{ y: visualY }}
+          >
+            <NebulaSmoke />
+            <ParticleStage scene={scene} />
+            <div aria-hidden className="pointer-events-none absolute inset-y-[12%] left-0 hidden w-px bg-gradient-to-b from-transparent via-primary/30 to-transparent lg:block" />
+            <SceneCaption scene={scene} />
+          </motion.div>
+          {/* Keep left text readable over the backdrop on small screens */}
+          <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-bg/20 via-bg/60 to-bg/85 lg:hidden" />
 
-        <NavPill active={index} onNavigate={goTo} />
+          {/* Left: data & cards */}
+          <main className="pointer-events-none absolute inset-0 [perspective:1400px] lg:relative lg:col-span-7 lg:col-start-1 lg:row-start-1">
+            <motion.div className="h-full w-full" style={{ rotateX: stageRotate, y: stageY, scale: stageScale }}>
+              <AnimatePresence mode="wait" custom={dir} initial={false}>
+                <motion.section
+                  key={STAGES[index].id}
+                  id={STAGES[index].id}
+                  aria-label={STAGES[index].title}
+                  custom={dir}
+                  variants={reduce ? reducedStageVariants : stageVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  className="pointer-events-auto absolute inset-0 flex items-center"
+                >
+                  <div className="w-full px-4 sm:px-8 lg:pr-8 lg:pl-10 xl:pr-12 xl:pl-14 2xl:pl-[max(3.5rem,calc(50vw-44rem))]">
+                    <StageScroller
+                      dir={dir}
+                      onNext={() => index < STAGE_COUNT - 1 && goTo(index + 1)}
+                      onPrev={() => index > 0 && goTo(index - 1)}
+                      onMoreChange={setHasMore}
+                    >
+                      <div className="mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none">
+                        {index === 0 && <HeroStage onNavigate={goTo} />}
+                        {index === 1 && <StackStage activeGroup={activeGroup} onGroup={setActiveGroup} />}
+                        {index === 2 && (
+                          <WorkStage
+                            tab={workTab}
+                            onTab={setWorkTab}
+                            activeProject={activeProject}
+                            onProject={setActiveProject}
+                          />
+                        )}
+                        {index === 3 && <ContactStage />}
+                      </div>
+                    </StageScroller>
+                  </div>
+                </motion.section>
+              </AnimatePresence>
+            </motion.div>
+            <ScrollHint visible={index === 0 && !hasMore} />
+          </main>
+        </div>
+
         <ProgressDots active={index} progress={progress} onNavigate={goTo} />
         <StageCounter active={index} />
-
-        {/* Left: data & cards */}
-        <main className="pointer-events-none absolute inset-0 [perspective:1400px] lg:right-1/2">
-          <motion.div className="h-full w-full" style={{ rotateX: stageRotate, y: stageY, scale: stageScale }}>
-            <AnimatePresence mode="wait" custom={dir} initial={false}>
-              <motion.section
-                key={STAGES[index].id}
-                id={STAGES[index].id}
-                aria-label={STAGES[index].title}
-                custom={dir}
-                variants={reduce ? reducedStageVariants : stageVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                className="no-scrollbar pointer-events-auto absolute inset-0 overflow-y-auto"
-              >
-                <div className="flex min-h-full w-full items-center px-4 pt-24 pb-20 sm:px-8 lg:pr-10 lg:pl-[max(2rem,calc(50vw-36rem))] xl:pr-14">
-                  <div className="mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none">
-                    {index === 0 && <HeroStage onNavigate={goTo} />}
-                    {index === 1 && <StackStage activeGroup={activeGroup} onGroup={setActiveGroup} />}
-                    {index === 2 && (
-                      <WorkStage
-                        tab={workTab}
-                        onTab={setWorkTab}
-                        activeProject={activeProject}
-                        onProject={setActiveProject}
-                      />
-                    )}
-                    {index === 3 && <ContactStage />}
-                  </div>
-                </div>
-              </motion.section>
-            </AnimatePresence>
-          </motion.div>
-        </main>
-
-        <ScrollHint visible={index === 0} />
       </div>
     </>
   );
@@ -1428,6 +1478,172 @@ export default function Home() {
 /* ════════════════════════════════════════════════════════════════════════════
  * Ambient layers
  * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Internal scroll for tall left-side stages. While there is more content, wheel/touch
+ * scroll the panel itself (scroll chaining is contained). Once the reader reaches the
+ * end, a *new* gesture in the same direction hands off to the next/previous stage —
+ * so momentum from reading never skips a stage or leaves content cut off.
+ */
+function StageScroller({
+  children,
+  dir,
+  onNext,
+  onPrev,
+  onMoreChange,
+}: {
+  children: ReactNode;
+  dir: number;
+  onNext: () => void;
+  onPrev: () => void;
+  onMoreChange: (more: boolean) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  const [more, setMore] = useState(false);
+  const reduce = useReducedMotion();
+  const gesture = useRef({ lastWheel: 0, edgeDir: 0, lockUntil: 0, touchY: 0, touchTop: false, touchBottom: false });
+
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const of = el.scrollHeight - el.clientHeight > 4;
+    setOverflow(of);
+    setMore(of && el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+  }, []);
+
+  useEffect(() => {
+    onMoreChange(more);
+  }, [more, onMoreChange]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    gesture.current.edgeDir = dir < 0 ? 1 : -1;
+    const mountedAt = performance.now();
+    const ro = new ResizeObserver(() => {
+      // Keep pinned to the end while the entering stage finishes laying out.
+      if (dir < 0 && performance.now() - mountedAt < 1200) el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
+      measure();
+    });
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    const raf = requestAnimationFrame(() => {
+      // Arriving from the stage below: start at the end so reading continues upward naturally.
+      if (dir < 0) el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
+      measure();
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      onMoreChange(false);
+    };
+  }, [dir, measure, onMoreChange]);
+
+  const edges = () => {
+    const el = ref.current!;
+    return { top: el.scrollTop <= 2, bottom: el.scrollTop + el.clientHeight >= el.scrollHeight - 2 };
+  };
+
+  const handoff = (direction: 1 | -1) => {
+    const g = gesture.current;
+    const now = performance.now();
+    if (now < g.lockUntil) return;
+    g.lockUntil = now + 1100;
+    g.edgeDir = 0;
+    if (direction > 0) onNext();
+    else onPrev();
+  };
+
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!overflow || e.deltaY === 0) return;
+    const g = gesture.current;
+    const now = performance.now();
+    const gap = now - g.lastWheel;
+    g.lastWheel = now;
+    const d = e.deltaY > 0 ? 1 : -1;
+    const { top, bottom } = edges();
+    const atEdge = (d > 0 && bottom) || (d < 0 && top);
+    if (!atEdge) {
+      g.edgeDir = 0;
+      return;
+    }
+    // Same-direction gesture that started after a pause at the edge → next/previous stage.
+    if (g.edgeDir === d && gap > 180) handoff(d);
+    else g.edgeDir = d;
+  };
+
+  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const { top, bottom } = edges();
+    Object.assign(gesture.current, { touchY: e.touches[0].clientY, touchTop: top, touchBottom: bottom });
+  };
+
+  const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!overflow) return;
+    const g = gesture.current;
+    const dy = g.touchY - e.changedTouches[0].clientY;
+    const { top, bottom } = edges();
+    if (dy > 60 && g.touchBottom && bottom) handoff(1);
+    else if (dy < -60 && g.touchTop && top) handoff(-1);
+  };
+
+  const scrollMore = () => {
+    const el = ref.current;
+    if (el) el.scrollBy({ top: el.clientHeight * 0.7, behavior: reduce ? "instant" : "smooth" });
+  };
+
+  return (
+    <div className="relative">
+      <div
+        ref={ref}
+        onScroll={measure}
+        onWheel={onWheel}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        className={`scroll-sleek max-h-[82vh] overflow-y-auto pr-2 ${overflow ? "overscroll-contain" : ""}`}
+      >
+        {children}
+        {overflow && <div aria-hidden className="h-10" />}
+      </div>
+
+      <AnimatePresence>
+        {more && (
+          <>
+            <motion.div
+              key="fade"
+              aria-hidden
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-bg via-bg/75 to-transparent"
+            />
+            <motion.button
+              key="more"
+              type="button"
+              onClick={scrollMore}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.25 }}
+              className="glass absolute bottom-2 left-1/2 flex min-h-9 -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full px-3.5 font-mono text-[11px] tracking-wider whitespace-nowrap text-fg-soft uppercase transition-colors duration-200 hover:border-primary/40 hover:text-fg"
+            >
+              <Mouse className="h-3.5 w-3.5 text-primary" aria-hidden />
+              Scroll for more
+              <motion.span
+                aria-hidden
+                animate={reduce ? undefined : { y: [0, 3, 0] }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <ChevronDown className="h-3.5 w-3.5 text-secondary" />
+              </motion.span>
+            </motion.button>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 const ORB_PALETTES = [
   ["#22d3ee", "#a78bfa", "#3b82f6"],
@@ -1472,7 +1688,7 @@ function AmbientBackdrop({ progress, stage }: { progress: MotionValue<number>; s
         animate={{ backgroundColor: c1 }}
         transition={{ duration: 1.2 }}
       />
-      <div className="absolute inset-x-0 bottom-0 h-[50%] [perspective:600px] lg:right-1/2">
+      <div className="absolute inset-x-0 bottom-0 h-[50%] [perspective:600px] lg:right-[41.667%]">
         <motion.div
           className="absolute inset-x-[-50%] bottom-[-20%] h-[160%] origin-bottom [transform:rotateX(62deg)] opacity-[0.18]"
           style={{
@@ -1523,7 +1739,7 @@ function SceneCaption({ scene }: { scene: Scene }) {
         ? SCENE_CAPTIONS[scene.variant]
         : SCENE_CAPTIONS[scene.kind];
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-6 hidden justify-center lg:flex">
+    <div className="pointer-events-none absolute inset-x-0 bottom-6 hidden justify-center px-4 lg:flex">
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={c.k}
@@ -1531,11 +1747,11 @@ function SceneCaption({ scene }: { scene: Scene }) {
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           exit={{ opacity: 0, y: -8, filter: "blur(4px)" }}
           transition={{ duration: 0.35 }}
-          className="glass flex items-center gap-3 rounded-full px-4 py-2 font-mono text-[11px]"
+          className="glass flex max-w-full min-w-0 items-center gap-3 rounded-full px-4 py-2 font-mono text-[11px]"
         >
           <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgb(34_211_238/0.9)]" />
           <span className="text-primary">{c.title}</span>
-          <span className="text-muted">{c.text}</span>
+          <span className="truncate text-muted">{c.text}</span>
         </motion.div>
       </AnimatePresence>
     </div>
@@ -1545,47 +1761,6 @@ function SceneCaption({ scene }: { scene: Scene }) {
 /* ════════════════════════════════════════════════════════════════════════════
  * Navigation — floating pill + side progress dots + stage counter
  * ════════════════════════════════════════════════════════════════════════════ */
-
-function NavPill({ active, onNavigate }: { active: number; onNavigate: (i: number) => void }) {
-  return (
-    <header className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3 sm:top-5">
-      <motion.nav
-        aria-label="Sections"
-        initial={{ y: -30, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 160, damping: 20, delay: 0.2 }}
-        className="glass pointer-events-auto flex items-center gap-1 rounded-full p-1.5"
-      >
-        <button
-          type="button"
-          onClick={() => onNavigate(0)}
-          aria-label="Back to intro"
-          className="mr-1 hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary font-mono text-xs font-bold text-bg sm:flex"
-        >
-          SD
-        </button>
-        {STAGES.map((s, i) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => onNavigate(i)}
-            aria-current={active === i ? "true" : undefined}
-            className="relative flex h-9 min-w-[44px] cursor-pointer items-center justify-center rounded-full px-3 font-mono text-xs tracking-wide transition-colors duration-200 sm:px-4 sm:text-[13px]"
-          >
-            {active === i && (
-              <motion.span
-                layoutId="nav-active"
-                className="absolute inset-0 rounded-full border border-primary/30 bg-primary/10 shadow-[0_0_20px_-4px_rgb(34_211_238/0.5)]"
-                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-              />
-            )}
-            <span className={`relative ${active === i ? "text-fg" : "text-muted hover:text-fg-soft"}`}>{s.label}</span>
-          </button>
-        ))}
-      </motion.nav>
-    </header>
-  );
-}
 
 function ProgressDots({
   active,
@@ -1682,7 +1857,7 @@ function ScrollHint({ visible }: { visible: boolean }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="pointer-events-none absolute bottom-5 left-1/2 z-20 hidden -translate-x-1/2 flex-col items-center gap-1 font-mono text-[11px] tracking-widest text-muted uppercase sm:flex lg:left-1/4"
+          className="pointer-events-none absolute bottom-5 left-1/2 z-20 hidden -translate-x-1/2 flex-col items-center gap-1 font-mono text-[11px] tracking-widest text-muted uppercase sm:flex"
         >
           <motion.span
             animate={reduce ? undefined : { y: [0, 6, 0] }}
@@ -1816,7 +1991,7 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
         className="font-mono text-[2.6rem] leading-[1.02] font-bold tracking-tight sm:text-6xl xl:text-7xl"
       >
         {PROFILE.firstName}{" "}
-        <br className="hidden sm:block" />
+        <br className="hidden sm:block lg:hidden" />
         <span className="glow-text bg-gradient-to-r from-primary via-sky-300 to-secondary bg-clip-text text-transparent">
           {PROFILE.lastName}
         </span>
