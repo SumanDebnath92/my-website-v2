@@ -355,26 +355,42 @@ const STACK_ICONS: Record<string, { d: string; stroke?: boolean }> = {
   "AWS EC2": { d: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z", stroke: true },
   Codex: { d: "M4 17l6-6-6-6M12 19h8", stroke: true },
   Virtualization: { d: "M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1ZM3 9h18M3 15h18", stroke: true },
+  // Workflow-builder node glyphs (outline style)
+  "flow:user-plus": { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0a4 4 0 1 1 8 0M19 8v6M22 11h-6", stroke: true },
+  "flow:filter": { d: "M22 3H2l8 9.46V19l4 2v-8.54L22 3z", stroke: true },
+  "flow:mail": { d: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6", stroke: true },
+  "flow:sms": { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM7 8h10M7 12h6", stroke: true },
 };
 const nodeAngle = (k: number, j: number) => (j / RINGS[k].nodes.length) * Math.PI * 2 + k * 0.7;
 
-type FlowNode = { id: string; label: string; sub?: string; x: number; y: number };
-type FlowSpec = { title: string; url: string; nodes: FlowNode[]; edges: [string, string, string?][] };
+type FlowNode = { id: string; label: string; sub?: string; icon?: string; x: number; y: number };
+type FlowSpec = {
+  title: string;
+  url: string;
+  nodes: FlowNode[];
+  edges: [string, string, string?][];
+  /** Node half-width in unit coords (defaults to NODE_HW). */
+  hw?: number;
+  /** Play the scripted trigger → filter → email → SMS run instead of generic pulses. */
+  script?: boolean;
+};
 
 /** One live system diagram per project (unit coords, x ∈ [-1,1], y ∈ [-0.9,0.9]). */
 const FLOWS: FlowSpec[] = [
   {
     title: "workflow-automation-builder",
     url: "redbeltgym.com",
+    hw: 0.27,
+    script: true,
     nodes: [
-      { id: "t", label: "Trigger", sub: "contact created", x: -0.68, y: -0.5 },
-      { id: "c", label: "Yes / No", sub: "has membership?", x: -0.68, y: 0.05 },
-      { id: "e", label: "Send email", sub: "welcome series", x: 0.02, y: -0.28 },
-      { id: "s", label: "Send SMS", sub: "trial offer", x: 0.02, y: 0.38 },
-      { id: "m", label: "Member app", sub: "in-app message", x: 0.68, y: -0.28 },
-      { id: "p", label: "Contact profile", sub: "attendance + notes", x: 0.68, y: 0.38 },
+      { id: "t", label: "Trigger", sub: "Contact added", icon: "flow:user-plus", x: 0, y: -0.56 },
+      { id: "f", label: "Filter", sub: "Yes / No", icon: "flow:filter", x: 0, y: -0.2 },
+      { id: "ey", label: "Send email", sub: "yes path", icon: "flow:mail", x: -0.48, y: 0.16 },
+      { id: "en", label: "Send email", sub: "no path", icon: "flow:mail", x: 0.48, y: 0.16 },
+      { id: "sy", label: "Send SMS", sub: "yes path", icon: "flow:sms", x: -0.48, y: 0.52 },
+      { id: "sn", label: "Send SMS", sub: "no path", icon: "flow:sms", x: 0.48, y: 0.52 },
     ],
-    edges: [["t", "c"], ["c", "e", "yes"], ["c", "s", "no"], ["e", "m"], ["s", "p"], ["m", "p"]],
+    edges: [["t", "f"], ["f", "ey", "yes"], ["f", "en", "no"], ["ey", "sy"], ["en", "sn"]],
   },
   {
     title: "visual-ivr-builder",
@@ -463,7 +479,9 @@ const PORTRAIT_TONES = Array.from({ length: PORTRAIT_TONE_STEPS * PORTRAIT_BRIGH
 });
 const PORTRAIT_TONE0 = 8;
 
-const PALETTE = ["#7c3aed", "#8b5cf6", "#a78bfa", "#818cf8", "#60a5fa", "#38bdf8", "#7dd3fc", "#bae6fd", ...PORTRAIT_TONES];
+const PALETTE = ["#7c3aed", "#8b5cf6", "#a78bfa", "#818cf8", "#60a5fa", "#38bdf8", "#7dd3fc", "#bae6fd", ...PORTRAIT_TONES, "#22c55e", "#f87171"];
+const TONE_YES = PALETTE.length - 2; // green — "yes" branch
+const TONE_NO = PALETTE.length - 1; // red — "no" branch
 
 type Pt = { x: number; y: number; z: number; ring: number; ang: number; rad: number; tone: number; alpha: number; size: number; tag: number };
 
@@ -722,10 +740,12 @@ function buildStack(max: number): Model {
 const NODE_HW = 0.2;
 const NODE_HH = 0.088;
 
-function edgeEnds(a: FlowNode, b: FlowNode) {
+const edgeTone = (tag?: string) => (tag === "yes" ? TONE_YES : tag === "no" ? TONE_NO : 4);
+
+function edgeEnds(a: FlowNode, b: FlowNode, hw = NODE_HW) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const clip = (sx: number, sy: number) => Math.min(NODE_HW / Math.max(Math.abs(sx), 1e-6), NODE_HH / Math.max(Math.abs(sy), 1e-6));
+  const clip = (sx: number, sy: number) => Math.min(hw / Math.max(Math.abs(sx), 1e-6), NODE_HH / Math.max(Math.abs(sy), 1e-6));
   const ta = clip(dx, dy);
   return {
     x1: a.x + dx * ta, y1: a.y + dy * ta,
@@ -753,13 +773,14 @@ function buildFlow(index: number, max: number): Model {
   // Browser-window wireframe
   rect(-1, -0.92, 2, 1.8, 0.03, { tone: 2, alpha: 0.35, size: 1, tag: 1 });
   line(-1, -0.76, 1, -0.76, 0.04, { tone: 2, alpha: 0.25, size: 1, tag: 1 });
+  const hw = f.hw ?? NODE_HW;
   const byId = Object.fromEntries(f.nodes.map((n) => [n.id, n]));
-  f.edges.forEach(([a, b]) => {
-    const e = edgeEnds(byId[a], byId[b]);
-    line(e.x1, e.y1, e.x2, e.y2, 0.02, { tone: 4, alpha: 0.6, size: 1.1, tag: 2 });
+  f.edges.forEach(([a, b, tag]) => {
+    const e = edgeEnds(byId[a], byId[b], hw);
+    line(e.x1, e.y1, e.x2, e.y2, 0.02, { tone: edgeTone(tag), alpha: 0.6, size: 1.1, tag: 2 });
   });
   f.nodes.forEach((n) => {
-    rect(n.x - NODE_HW, n.y - NODE_HH, NODE_HW * 2, NODE_HH * 2, 0.008, { tone: 6, alpha: 0.95, size: 1.3, tag: 0 });
+    rect(n.x - hw, n.y - NODE_HH, hw * 2, NODE_HH * 2, 0.008, { tone: 6, alpha: 0.95, size: 1.3, tag: 0 });
   });
   return finalize(pts, max, false);
 }
@@ -1093,17 +1114,17 @@ function ParticleStage({ scene }: { scene: Scene }) {
       }
       for (const n of nodes) {
         const on = group === n.k;
-        const depthA = Math.max(0.25, Math.min(1, 0.85 - n.d * 0.5));
-        const a = (group >= 0 && !on ? 0.3 : 1) * depthA;
+        const depthA = Math.max(0.5, Math.min(1, 0.95 - n.d * 0.4));
+        const a = (group >= 0 && !on ? 0.4 : 1) * depthA;
         // Icon badge: dark disc + thin theme ring, logo inside, name underneath.
-        const br = (compact ? 10 : 13) * n.s * (on ? 1.12 : 1);
+        const br = (compact ? 15 : 20) * n.s * (on ? 1.12 : 1);
         octx.globalAlpha = blend * a;
         octx.fillStyle = "rgba(5,7,13,0.88)";
         octx.beginPath();
         octx.arc(n.x, n.y, br, 0, Math.PI * 2);
         octx.fill();
         octx.lineWidth = on ? 1.4 : 1;
-        octx.strokeStyle = on ? "rgba(167,139,250,0.95)" : "rgba(125,211,252,0.55)";
+        octx.strokeStyle = on ? "rgba(167,139,250,0.95)" : "rgba(125,211,252,0.8)";
         octx.stroke();
         if (on) {
           octx.strokeStyle = "rgba(167,139,250,0.35)";
@@ -1111,18 +1132,151 @@ function ParticleStage({ scene }: { scene: Scene }) {
           octx.arc(n.x, n.y, br + 5 * n.s, 0, Math.PI * 2);
           octx.stroke();
         }
-        drawIcon(n.text, n.x, n.y, br * 1.15, on ? "#ddd6fe" : "#e0f2fe");
+        drawIcon(n.text, n.x, n.y, br * 1.2, on ? "#ede9fe" : "#f0f9ff");
         octx.globalAlpha = blend;
-        label(n.text, n.x, n.y + br + 11 * n.s, Math.round((compact ? 9 : 10.5) * n.s), `rgba(226,232,240,${a * 0.95})`, on ? 600 : 500);
+        label(n.text, n.x, n.y + br + 13 * n.s, Math.round((compact ? 10 : 12) * n.s), `rgba(226,232,240,${a * 0.95})`, on ? 600 : 500);
       }
       const coreOn = group === 4;
-      const ci = compact ? 15 : 19;
-      const iconY = cy0 + v.R * 0.26 - (compact ? 22 : 27);
+      const ci = compact ? 20 : 26;
+      const iconY = cy0 + v.R * 0.26 - (compact ? 26 : 33);
       octx.globalAlpha = blend;
       drawIcon("React.js", cx0 - ci * 0.75, iconY, ci, coreOn ? "#c4b5fd" : "#7dd3fc");
       drawIcon("Next.js", cx0 + ci * 0.75, iconY, ci, coreOn ? "#c4b5fd" : "#f8fafc");
       label(CORE_LABEL, cx0, cy0 + v.R * 0.26, compact ? 11 : 13, coreOn ? "#c4b5fd" : "#f8fafc", 700);
       label("core expertise", cx0, cy0 + v.R * 0.26 + 14, compact ? 9 : 10, "rgba(148,163,184,0.9)");
+    };
+
+    /**
+     * Red Belt workflow run, looping every FLOW_CYCLE seconds:
+     *  trigger fires ("+1 contact") → signal to the filter → splits down the green "yes" and red "no"
+     *  paths → each email node sends (mail icon flies out and fades) → signal to SMS → SMS icon flies out.
+     */
+    const FLOW_CYCLE = 6;
+    const drawScriptedFlow = (v: View, f: FlowSpec, poly: (pts: [number, number][]) => void) => {
+      const hw = f.hw ?? NODE_HW;
+      const byId = Object.fromEntries(f.nodes.map((n) => [n.id, n]));
+      const ph = still ? 0.55 : (t % FLOW_CYCLE) / FLOW_CYCLE;
+      const seg = (a: number, b: number) => (ph < a || ph > b ? -1 : (ph - a) / (b - a));
+      const ease = (u: number) => 1 - Math.pow(1 - u, 3);
+      const branchColor = (tag?: string) =>
+        tag === "yes" ? "34,197,94" : tag === "no" ? "248,113,113" : "125,211,252";
+
+      // Timeline windows (fractions of the cycle)
+      const TRIGGER = [0, 0.16];
+      const TO_FILTER = [0.12, 0.27];
+      const FILTER = [0.26, 0.34];
+      const TO_EMAIL = [0.33, 0.49];
+      const EMAIL = [0.48, 0.66];
+      const TO_SMS = [0.6, 0.75];
+      const SMS = [0.74, 0.92];
+
+      const dot = (x: number, y: number, rgb: string) => {
+        octx.fillStyle = `rgba(${rgb},0.28)`;
+        octx.beginPath();
+        octx.arc(x, y, 7, 0, Math.PI * 2);
+        octx.fill();
+        octx.fillStyle = `rgb(${rgb})`;
+        octx.beginPath();
+        octx.arc(x, y, 3, 0, Math.PI * 2);
+        octx.fill();
+      };
+
+      // Edges: yes path green, no path red (filter → first node only); everything else default.
+      const edgePts = f.edges.map(([a, b, tag]) => {
+        const e = edgeEnds(byId[a], byId[b], hw);
+        project(e.x1, e.y1, 0, v);
+        const x1 = P.x, y1 = P.y;
+        project(e.x2, e.y2, 0, v);
+        const x2 = P.x, y2 = P.y;
+        const rgb = branchColor(tag);
+        octx.strokeStyle = tag ? `rgba(${rgb},0.85)` : "rgba(56,189,248,0.4)";
+        octx.lineWidth = tag ? 1.8 : 1.2;
+        octx.beginPath();
+        octx.moveTo(x1, y1);
+        octx.lineTo(x2, y2);
+        octx.stroke();
+        return { a, b, tag, x1, y1, x2, y2, rgb };
+      });
+
+      // Travelling signals
+      for (const e of edgePts) {
+        let u = -1;
+        if (e.a === "t") u = seg(TO_FILTER[0], TO_FILTER[1]);
+        else if (e.a === "f") u = seg(TO_EMAIL[0], TO_EMAIL[1]);
+        else u = seg(TO_SMS[0], TO_SMS[1]);
+        if (u >= 0) {
+          const k = ease(u);
+          dot(e.x1 + (e.x2 - e.x1) * k, e.y1 + (e.y2 - e.y1) * k, e.tag ? e.rgb : "224,242,254");
+        }
+        if (e.tag) {
+          const mxp = (e.x1 + e.x2) / 2, myp = (e.y1 + e.y2) / 2;
+          octx.fillStyle = "rgba(5,7,13,0.9)";
+          octx.fillRect(mxp - 16, myp - 9, 32, 17);
+          octx.strokeStyle = `rgba(${e.rgb},0.7)`;
+          octx.lineWidth = 1;
+          octx.strokeRect(mxp - 16, myp - 9, 32, 17);
+          label(e.tag, mxp, myp + 3.5, compact ? 9 : 10.5, `rgb(${e.rgb})`, 700);
+        }
+      }
+
+      // Nodes
+      const nodeActive = (id: string) => {
+        if (id === "t") return seg(TRIGGER[0], TRIGGER[1]);
+        if (id === "f") return seg(FILTER[0], FILTER[1]);
+        if (id.startsWith("e")) return seg(EMAIL[0], EMAIL[1]);
+        return seg(SMS[0], SMS[1]);
+      };
+      for (const n of f.nodes) {
+        const act = nodeActive(n.id);
+        const glow = act >= 0 ? Math.sin(Math.PI * act) : 0;
+        poly([[n.x - hw, n.y - NODE_HH], [n.x + hw, n.y - NODE_HH], [n.x + hw, n.y + NODE_HH], [n.x - hw, n.y + NODE_HH]]);
+        octx.fillStyle = "rgba(11,16,32,0.78)";
+        octx.fill();
+        octx.strokeStyle = glow > 0 ? `rgba(167,139,250,${0.45 + 0.55 * glow})` : "rgba(125,211,252,0.4)";
+        octx.lineWidth = 1 + glow * 1.2;
+        octx.stroke();
+
+        project(n.x - hw + 0.075, n.y, 0, v);
+        const ix = P.x, iy = P.y, s = P.s;
+        const iconSize = (compact ? 15 : 19) * s;
+        if (n.icon) drawIcon(n.icon, ix, iy, iconSize, glow > 0 ? "#ddd6fe" : "#7dd3fc");
+        project(n.x + 0.06, n.y, 0, v);
+        label(n.label, P.x, P.y - 2 * s, Math.round((compact ? 10 : 12) * s), glow > 0 ? "#ede9fe" : "#f1f5f9", 600);
+        if (n.sub) label(n.sub, P.x, P.y + 12 * s, Math.round((compact ? 8.5 : 10) * s), "rgba(148,163,184,0.95)");
+
+        // Trigger fired: expanding ring + "+1 contact" chip rising off the node.
+        if (n.id === "t" && act >= 0) {
+          project(n.x, n.y, 0, v);
+          const cx = P.x, cy = P.y;
+          octx.strokeStyle = `rgba(34,211,238,${(1 - act) * 0.7})`;
+          octx.lineWidth = 1.5;
+          octx.beginPath();
+          octx.ellipse(cx, cy, (hw * v.R + 6) * (1 + act * 0.35), (NODE_HH * v.R + 6) * (1 + act * 0.9), 0, 0, Math.PI * 2);
+          octx.stroke();
+          const chipY = cy - NODE_HH * v.R - 14 - act * 18;
+          octx.globalAlpha = blend * Math.sin(Math.PI * act);
+          octx.fillStyle = "rgba(34,197,94,0.16)";
+          octx.strokeStyle = "rgba(34,197,94,0.8)";
+          octx.beginPath();
+          octx.roundRect(cx - 52, chipY - 11, 104, 20, 10);
+          octx.fill();
+          octx.stroke();
+          label("+1 contact added", cx, chipY + 3, compact ? 9 : 10.5, "#86efac", 600);
+          octx.globalAlpha = blend;
+        }
+
+        // Sent: the channel icon flies out of the node and fades away.
+        const sending = n.id.startsWith("e") || n.id.startsWith("s") ? act : -1;
+        if (sending >= 0) {
+          const side = n.x < 0 ? -1 : 1;
+          const k = ease(sending);
+          const fx = ix + side * (k * (compact ? 50 : 80)) + (side < 0 ? 0 : (hw * 2 - 0.15) * v.R * s);
+          const fy = iy - k * (compact ? 34 : 52);
+          octx.globalAlpha = blend * (1 - sending);
+          drawIcon(n.icon!, fx, fy, iconSize * (1 + 0.35 * k), n.icon === "flow:mail" ? "#bae6fd" : "#c4b5fd");
+          octx.globalAlpha = blend;
+        }
+      }
     };
 
     const drawFlowOverlay = (v: View, index: number) => {
@@ -1157,6 +1311,11 @@ function ParticleStage({ scene }: { scene: Scene }) {
       octx.arc(P.x - 34, P.y, 3, 0, Math.PI * 2);
       octx.fill();
       label("live", P.x, P.y + 3, compact ? 9 : 10, "rgba(134,239,172,0.95)", 600, "right");
+
+      if (f.script) {
+        drawScriptedFlow(v, f, poly);
+        return;
+      }
 
       const byId = Object.fromEntries(f.nodes.map((n) => [n.id, n]));
       const activeNode = Math.floor(t * 0.7) % f.nodes.length;
