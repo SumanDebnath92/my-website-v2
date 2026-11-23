@@ -434,6 +434,14 @@ const FLOWS: FlowSpec[] = [
 ];
 
 const HOME = { name: "Kolkata, IN", lat: 22.57, lon: 88.36 };
+/** Twinkling city lights on the globe map (lat, lon). */
+const CITY_LIGHTS: [number, number][] = [
+  [40.71, -74.0], [37.77, -122.42], [43.65, -79.38], [19.43, -99.13], [-23.55, -46.63], [-34.6, -58.38],
+  [48.86, 2.35], [52.52, 13.4], [55.75, 37.62], [41.01, 28.98], [30.04, 31.24], [6.52, 3.38], [-26.2, 28.05],
+  [25.2, 55.27], [24.86, 67.0], [28.61, 77.2], [19.07, 72.87], [12.97, 77.59], [13.08, 80.27], [17.38, 78.48],
+  [23.81, 90.41], [27.7, 85.32], [13.75, 100.5], [1.35, 103.82], [-6.2, 106.85], [22.32, 114.17], [31.23, 121.47],
+  [39.9, 116.4], [37.57, 126.98], [35.68, 139.69], [14.6, 120.98], [-33.86, 151.2], [-37.81, 144.96], [-36.85, 174.76],
+];
 const CITIES = [
   { name: "Bengaluru", lat: 12.97, lon: 77.59 },
   { name: "Mumbai", lat: 19.07, lon: 72.87 },
@@ -787,6 +795,21 @@ function buildFlow(index: number, max: number): Model {
 
 const GLOBE_R = 0.78;
 
+/**
+ * World land mask, 1° resolution (360 × 180, row 0 = 90°N, col 0 = 180°W), one bit per cell, base64.
+ * Rasterised from Natural Earth 1:50m land (public domain) via world-atlas.
+ */
+const LAND_MASK_B64 =
+  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAfwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/P8/AGD//z8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8//+F/////3/5AAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPAH8H/+//////8HAAAAAAAAADSAAQAAAB8AAAAAAAAAAAAAAAAAAAAAAAAAAPD//wf4//////8BAACAdT8AAAAAAAAAAP4AAAAAAAAAAAAAAAAAAAAAAAB4+Jzn//D//////38AAACAewMAAAAAAAAAAAAfAAAAAAAAAAAAAAAAAAAAAIA4BHAyO0D8/////38AAAAAPAoAAAAAAAAAAAA4AAAAAAAAAAAAAAAAAAAAAFhAmPPVH4D//////z8AAAAAAAAAAAAA4AEAAAD8HwAAAAAAAAAAAAAAAAAAAAD/Az/fDwAA/P////8BAAAAAAAAAADABwAAwP//PwAA4FsAAAAAAAAAAAAAAAQMAAQQAAAA8P////8BAAAAAAAAAABwAAAA+P//FwAAAAAAAAAAAAAAAAAAAP8BxvMxfwAA8P///3cAAAAAAAAAAAAcAIDh//9/3IcLAAcAAAAAAAAAAAAAgN9/xy+8xwEA4P///zcAAAAAAAAAAAAGAJ7i//////8fAD4AAAAAAwAAAAAAAMf+D2L8/wsAoP///x0AAAAAAAAAAAAOAG9+//////8fef8HAAAAAADwTwAAAADwH/D4//8AwP7/fxEAAAAAANgHAAAAgN9/////////////DwAAAAD+//+Bvob/H9SBof8AwP7//w8AAAAAoP8PAAAAD9///////////////48/A8D///////8LD8jNA/wBgP///wAAAAAA6P//AwN6//79////////////////HwD///////9//+/vh/EPwP//BwAAAAAA8P//H/H//8///////////////////4Hw//////////+fAfw/wP//AQAAAAAA/v+fH/////P/////////////////8fD///////////9XAPwZgP8PANA/AAAA/+N/8P//////////////////////wAD4///////////Pw/gHAP4PAMA/AACA//F//v////////////////////8fAAP4///////////BAGAHAP4HAAADAACw//z///////////////////////9/AID//////////38AQ4AJAPwDAAAAAAD8P/7/////////////////////f/5fAMD//////////z8AwA8AAPgDAAAAAAD+H/z/////////////////////Mf8BAID/7/z//////x8AwD8AAMAAAAAAAAT+P7z+//////////////////9/wG8AAAD8AwD//////x8AwD8IAAAAAAAAAAC+P2D///////////////////91cAAAAACACwD4/////38AwP8eAAAAAAAAgAGcH/T//////////////////wEAOAAAAACADgDw/////38AgP8/AAAAAAAA4AMAX/T//////////////////wAAfgAAAAAwAABA//////8PgP8/AAAAAAAAgAFwHv7/////////////////PwAAfwAAAAAAAABA//////8/gP//AAAAAAAAgAPwAv7/////////////////DwAAPwAAAIAAAAAA/P//////8///AwAAAAAAcAcgcv//////////////////HwAAHwAAAAAAAACA/P//////4///DwAAAAAAPA7o/////////////////////wEADwAAAAAAAAAA8f//////4///DwAAAAAAPD/+/////////////////////wUAAwAAAAAAAAAA8P//////////FwAAAAAAAB///////////////////////wUAAwAAAAAAAAAAkP//////////CAAAAAAAgMD//////////////////////wwAAAAAAAAAAAAAYP////////8xLAAAAAAAAPT//////////////////////wwAAAAAAAAAAAAAAP///////38PfAAAAAAAgP///////////////////////wQAAAAAAAAAAAAAAP3///////8HUAAAAAAAAPz/////////////////////fwQAAAAAAAAAAAAAAP////////+XAAAAAAAAAPz////3/B/+////////////PwgAAAAAAAAAAAAAAP////////9/AAAAAAAAAPj//f9j/A/+////////////HwAAAAAAAAAAAAAAAP////////8MAAAAAAAAAPj/+P8B/Mf/////////////DwQAAAAAAAAAAAAAAP///////z8AAAAAAAAAcPzH4/8B8I//////////////Bx4AAAAAAAAAAAAAAP///////x8AAAAAAAAA+H+gw/8AwA/+//////////9/AAQAAAAAAAAAAAAAAP///////x8AAAAAAAAA+D8Ajv/w4B/8//////////8/AAAAAAAAAAAAAAAAAP///////wMAAAAAAAAA+B8wuA/+/z/+/////////98fAAMAAAAAAAAAAAAAAP///////wMAAAAAAAAA+E8wEIf//x/+/////////2cOAAMAAAAAAAAAAAAAAP7//////wEAAAAAgAAA+A8AEM7//x/8/////////wMOAAMAAAAAAAAAAAAAAPz//////wAAAAAAAAAA+AcABoT//x/8/////////zcYgAEAAAAAAAAAAAAAAPz//////wAAAAAAAAAAQOB/AAA2/////////////x8Y8AEAAAAAAAAAAAAAAPj//////wAAAAAAAAAAQPh/AAAA/////////////w8c/AAAAAAAAAAAAAAAAPj/////fwAAAAAAAAAA4P8/AAAA/////////////w+EGwAAAAAAAAAAAAAAAMD/////HwAAAAAAAAAA8P9/AACA/////////////x/EAwAAAAAAAAAAAAAAAID/////BwAAAAAAAAAA+P//BweA/////////////x+AAAAAAAAAAAAAAAAAAID9////BwAAAAAAAAAA/P//D3/A/////////////x9AAAAAAAAAAAAAAAAAAAD5////BwAAAAAAAAAA/P//f////////////////x8AAAAAAAAAAAAAAAAAAAD2/x8CBgAAAAAAAAAA/P/////v/4///////////z8AAAAAAAAAAAAAAAAAAAD0/wcABgAAAAAAAAAA/v///////4///////////z8AAAAAAAAAAAAAAAAAAADu/wcADgAAAAAAAACA//////8//x/+/////////x8AAAAAAAAAAAAAAAAAAACY/wcADAAAAAAAAADA//////8//z/g/////////w8AAAAAAAAAAAAAAAAAAACQ/wcACAAAAAAAAADg//////9//j+Av////////w8AAAAAAAAAAAAAAAAAAAAQ/wMAAAAAAAAAAADg//////9//n8YgP///////yMAAAAAAAAAAAAAAAAAAABA/gMAAAAAAAAAAADw////////+P9/AP///////xEAAAAAAAAAAAAAAAAAAAAA/AMAPQAAAAAAAADw////////+P//APz/////PxAAAAAAAAAAAAAAAAAAAAAA+AMIYAAAAAAAAAD4////////+f9/AOz/B///BAAAAAAAAAAAAAAAAAAAAAAA/AccgAEAAAAAAADw////////8f9/AOD/B/5/BAAAAAAAAAAAAAAAAQAAAAAA+A8eADgAAAAAAADw////////4f8/AOD/Afw/BgAAAAAAAAAAAAAAAAAAAAAA8J8OAPwAAAAAAADw////////4/8fAOD/APw/AgAAAAAAAAAAAAAAAAAAAAAAgP8PAAAAAAAAAADw////////x/8HAOB/APh/ADAAAAAAAAAAAAAAAAAAAAAAAP4PAAAAAAAAAADw////////h/8BAOA/AMz/ADAAAAAAAAAAAAAAAAAAAAAAAID/AAAAAAAAAAD4////////j/8AAMAPAMD/ARAAAAAAAAAAAAAAAAAAAAAAAAD/AQAAAAAAAAD4////////nx8AAMAPAMD/ATAAAAAAAAAAAAAAAAAAAAAAAAD4AAAAAAAAAAD4////////vwcAAIAPAMD+AdAAAAAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAD4////////fwACAIAPAID8AQABAAAAAAAAAAAAAAAAAAAAAADAAEgAAAAAAADg////////f0AAAAAPAID4AUADAAAAAAAAAAAAAAAAAAAAAADAAe8TAAAAAADg/////////34AAAAPAEBwAAgAAAAAAAAAAAAAAAAAAAAAAAAAE+9/AAAAAADA/////////38AAAAXAEAgAAQCAAAAAAAAAAAAAAAAAAAAAAAAz///AAAAAACA/////////z8AAAASAMAAAIADAAAAAAAAAAAAAAAAAAAAAAAAyP//AQAAAAAA/////////z8AAAAwAIAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAgP//AwAAAAAA/n///////x8AAAAwAAADAAMDAAAAAAAAAAAAAAAAAAAAAAAAgP//fwAAAAAA/A/+/////x8AAAAAAAgHgAcAAAAAAAAAAAAAAAAAAAAAAAAAgP///wAAAAAAEADk/////w8AAAAAADAGwAcAAAAAAAAAAAAAAAAAAAAAAAAAgP///wEAAAAAAADA/////wcAAAAAAGAG4AEAAAAAAAAAAAAAAAAAAAAAAAAAwP///wEAAAAAAADA/////wMAAAAAAMAM+AMQAAAAAAAAAAAAAAAAAAAAAAAA4P///wMAAAAAAADA/////wAAAAAAAIAL/gMQAAAAAAAAAAAAAAAAAAAAAAAA8P///wEAAAAAAADg////fwAAAAAAAIAH/uMQAAAAAAAAAAAAAAAAAAAAAAAA8P///w8AAAAAAADg////PwAAAAAAAAAX/gNIAQAAAAAAAAAAAAAAAAAAAAAA+P//f3cAAAAAAADg////PwAAAAAAAAAO/DkIAwAAAAAAAAAAAAAAAAAAAAAA+P///3sAAAAAAADA////HwAAAAAAAAB+/DkA8AEAAAAAAAAAAAAAAAAAAAAA+P////8fAAAAAACA////DwAAAAAAAAA8gChE/g8AAAAAAAAAAAAAAAAAAAAA+P////8/AAAAAAAA////BwAAAAAAAAA4AAAA8B8AAAAAAAAAAAAAAAAAAAAA+P//////AQAAAAAA////BwAAAAAAAAAwAAgAxD8NAAAAAAAAAAAAAAAAAAAA8P//////AQAAAAAA////BwAAAAAAAADAAQAAhP+AAAAAAAAAAAAAAAAAAAAA8P//////AQAAAAAA/v//BwAAAAAAAACAHwCAwH8AAAAAAAAAAAAAAAAAAAAA4P//////AQAAAAAA/v//BwAAAAAAAAAAgN8EAMcAAAAAAAAAAAAAAAAAAAAAwP//////AAAAAAAA/v//DwAAAAAAAAAAAAgBAIAFAAAAAAAAAAAAAAAAAAAAwP//////AAAAAAAA/P//DwAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAgP////9/AAAAAAAA/P//DwAAAAAAAAAAAABAAQQgAAAAAAAAAAAAAAAAAAAAgP////8/AAAAAAAA/v//HyAAAAAAAAAAAACAHwQAAAAAgAAAAAAAAAAAAAAAAP////8fAAAAAAAA/v//HzAAAAAAAAAAAADADwwAAAAAAAAAAAAAAAAAAAAAAP////8fAAAAAAAA////HzAAAAAAAAAAAADMDxwAAAAAAAAAAAAAAAAAAAAAAP7///8fAAAAAAAA////HzwAAAAAAAAAAAD/Dx4AAAAAAAAAAAAAAAAAAAAAAPj///8fAAAAAAAA////Dz8AAAAAAAAAAID/vx4AAAiAAAAAQAAAAAAAAAAAAOD///8fAAAAAAAA////Ax8AAAAAAAAAAMD//z4AAAAAAAAAAAAAAAAAAAAAAMD///8PAAAAAAAA////AR8AAAAAAAAAAMD//z8AAAAAAAAAAAAAAAAAAAAAAMD///8PAAAAAAAA/v9/AB8AAAAAAAAAAOD///8AAAAAAAAAAAAAAAAAAAAAAMD///8PAAAAAAAA/v9/AB8gAAAAAAAAAPz///8BAAEAAAAAAAAAAAAAAAAAAMD///8HAAAAAAAA/P9/gA8AAAAAAAAAgP////8BAAIAAAAAAAAAAAAAAAAAAMD///8DAAAAAAAA/P//gA8AAAAAAAAAwP////8DAAAAAAAAAAAAAAAAAAAAAMD//38AAAAAAAAA/P9/AA8AAAAAAAAAwP////8HAAAAAAAAAAAAAAAAAAAAAOD//x8AAAAAAAAA+P9/AAcAAAAAAAAA4P////8PAAAAAAAAAAAAAAAAAAAAAOD//wcAAAAAAAAA+P8fAAIAAAAAAAAAwP////8fAAAAAAAAAAAAAAAAAAAAAOD//wcAAAAAAAAA+P8fAAAAAAAAAAAA4P////8fAAAAAAAAAAAAAAAAAAAAAOD//w8AAAAAAAAA+P8fAAAAAAAAAAAAwP////8/AAAAAAAAAAAAAAAAAAAAAOD//wcAAAAAAAAA8P8PAAAAAAAAAAAAgP////8/AAAAAAAAAAAAAAAAAAAAAOD//wMAAAAAAAAA4P8HAAAAAAAAAAAAgP////8fAAAAAAAAAAAAAAAAAAAAAPD//wMAAAAAAAAA4P8HAAAAAAAAAAAAgP////8fAAAAAAAAAAAAAAAAAAAAAPD//wAAAAAAAAAAwP8DAAAAAAAAAAAAAP////8fAAAAAAAAAAAAAAAAAAAAAOD//wAAAAAAAAAAwP8BAAAAAAAAAAAAAP8D/P8PAAAAAAAAAAAAAAAAAAAAAPD/fQAAAAAAAAAAwH8AAAAAAAAAAAAAAP8A2P8HAAAAAAAAAAAAAAAAAAAAAPD/OwAAAAAAAAAAgAAAAAAAAAAAAAAAAAcA6P8HAAAAAAAAAAAAAAAAAAAAAPj/BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwP8DAAACAAAAAAAAAAAAAAAAAPj/BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8DAAAEAAAAAAAAAAAAAAAAAPz/BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8DAAAIAAAAAAAAAAAAAAAAAPz/AwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGgAAAA4AAAAAAAAAAAAAAAAAPg/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAAAAPw/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAPwHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAAAAALAAAAAAAAAAAAAAAAAPgPAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAAAIADAAAAAAAAAAAAAAAAAPgHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAMABAAAAAAAAAAAAAAAAAPgHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAP4BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHgAAAAAAAAAAAAAAAAAAP4BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAPwDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP0BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP4AAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHwAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANADAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAMAfAAAAAAB/eADGPwAAQAAAAAAAAAAAAAAAAAAAAIADAAAAAAAAAAAAAAAAAOT/AQCA/////////w8AAAAAAAAAAAAAAAAAAAAAAAAWAAAAAAAAAAAAAAAA4P///wP4//////////8HAAAAAAAAAAAAAAAAAAAAALgfAAAAAAAAAAAAAABg8P///wH/////////////DwAAAAAAAAAAAAAAAAAAAGA/AAAAAAAAAAA4fwL+/////+H/////////////XwAAAAAAAAAAAAAAAAAAAPg+AAAAAAAA9/f///////////j//////////////38AAAAAAAAAAAAAAA4AAHh+AAAAAAAA////////////f/7//////////////x8AAAAAAAAAIAAAAP9/WPp/AAAAAADw/////////////////////////////wcAAAAAAAAAEeA3AP////9/AAAAAAD8////////////////////////////fwEAAAAAAID///////////8PAAAAAID+////////////////////////////PwAAAAAAAP7//////////z8AAAAAgP//////////////////////////////fwAAAADAH////////////wMAAAAA/P///////////////////////////////xwAAAAA////////////fAABAPwA/////////////////////////////////wcAAAAe4P///////////zAAAPwBwP//////////////////////////////DwAAAAAAwP///////////wD8wB8A+P//////////////////////////////HwAAAAAG/v////////////8HAAD8////////////////////////////////HwAAAAAA+P////////////8f8P///////////////////////////////////wEAAPjr/////////////////////////////////////////////////////38AfwD/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////";
+let landBits: Uint8Array | null = null;
+function isLand(lat: number, lon: number) {
+  if (!landBits) landBits = Uint8Array.from(atob(LAND_MASK_B64), (ch) => ch.charCodeAt(0));
+  const row = Math.min(179, Math.max(0, Math.floor(90 - lat)));
+  const col = (((Math.floor(lon + 180) % 360) + 360) % 360);
+  const i = row * 360 + col;
+  return ((landBits[i >> 3] >> (i & 7)) & 1) === 1;
+}
+
 function latLon(lat: number, lon: number, r = GLOBE_R) {
   const p = (lat * Math.PI) / 180;
   const l = (lon * Math.PI) / 180;
@@ -807,14 +830,23 @@ function arcPoint(a: { x: number; y: number; z: number }, b: { x: number; y: num
 function buildGlobe(max: number, compact: boolean): Model {
   const pts: Pt[] = [];
   const golden = Math.PI * (3 - Math.sqrt(5));
-  const N = compact ? 900 : 1500;
+  // Dense even sphere sampling; land points draw the dotted world map, a sparse set of ocean
+  // points keeps the sphere's silhouette readable.
+  const N = compact ? 6000 : 11000;
   for (let i = 0; i < N; i++) {
     const y = 1 - (i / (N - 1)) * 2;
     const r = Math.sqrt(1 - y * y);
     const a = i * golden;
-    pts.push(pt(Math.cos(a) * r * GLOBE_R, y * GLOBE_R, Math.sin(a) * r * GLOBE_R, {
-      tone: 3 + ((Math.random() * 3) | 0), alpha: 0.55, size: 1.1, tag: 0,
-    }));
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const lat = (Math.asin(-y) * 180) / Math.PI;
+    const lon = (Math.atan2(x, -z) * 180) / Math.PI;
+    if (isLand(lat, lon)) {
+      pts.push(pt(x * GLOBE_R, y * GLOBE_R, z * GLOBE_R, {
+        tone: 5 + ((Math.random() * 3) | 0), alpha: 0.7 + Math.random() * 0.25, size: 1.25, tag: 0,
+      }));
+    } else if (i % 7 === 0) {
+      pts.push(pt(x * GLOBE_R, y * GLOBE_R, z * GLOBE_R, { tone: 1, alpha: 0.2, size: 0.9, tag: 3 }));
+    }
   }
   // Tilted orbit ring
   for (let i = 0; i < 160; i++) {
@@ -1038,7 +1070,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
         rx = -0.3 + my * 0.15;
         R = Math.min(w * 0.45, h * 0.5);
       } else if (s.kind === "globe") {
-        ry = (HOME.lon * Math.PI) / 180 + 0.22 + Math.sin(t * 0.15) * 0.22 + mx * 0.2;
+        ry = (HOME.lon * Math.PI) / 180 + 0.22 + Math.sin(t * 0.15) * 0.35 + mx * 0.2;
         rx = ((HOME.lat * Math.PI) / 180) * 0.8 + my * 0.25;
         R = Math.min(w, h) * 0.46;
       }
@@ -1424,8 +1456,93 @@ function ParticleStage({ scene }: { scene: Scene }) {
       });
     };
 
+    /** Front-facing polyline along a list of (lat, lon) points; back-side segments are skipped. */
+    const globeLine = (v: View, pts: [number, number][], rgba: (front: number) => string, width: number) => {
+      let px0 = 0, py0 = 0, prevFront = false;
+      octx.lineWidth = width;
+      for (let i = 0; i < pts.length; i++) {
+        const p = latLon(pts[i][0], pts[i][1]);
+        project(p.x, p.y, p.z, v);
+        const front = P.d < 0.05;
+        if (i > 0 && front && prevFront) {
+          octx.strokeStyle = rgba(Math.min(1, -P.d / GLOBE_R + 0.3));
+          octx.beginPath();
+          octx.moveTo(px0, py0);
+          octx.lineTo(P.x, P.y);
+          octx.stroke();
+        }
+        px0 = P.x;
+        py0 = P.y;
+        prevFront = front;
+      }
+    };
+
     const drawGlobeOverlay = (v: View, variant: "experience" | "contact") => {
       const home = latLon(HOME.lat, HOME.lon);
+
+      // Atmosphere: soft blue rim glow around the sphere.
+      project(0, 0, 0, v);
+      const gx = P.x, gy = P.y, gr = GLOBE_R * v.R * P.s;
+      const atmo = octx.createRadialGradient(gx, gy, gr * 0.9, gx, gy, gr * 1.22);
+      atmo.addColorStop(0, "rgba(56,189,248,0)");
+      atmo.addColorStop(0.35, "rgba(56,189,248,0.22)");
+      atmo.addColorStop(0.6, "rgba(139,92,246,0.1)");
+      atmo.addColorStop(1, "rgba(139,92,246,0)");
+      octx.fillStyle = atmo;
+      octx.beginPath();
+      octx.arc(gx, gy, gr * 1.22, 0, Math.PI * 2);
+      octx.fill();
+
+      // Graticule: faint meridians and parallels on the front hemisphere.
+      for (let lon = -180; lon < 180; lon += 30) {
+        const line: [number, number][] = [];
+        for (let lat = -80; lat <= 80; lat += 5) line.push([lat, lon]);
+        globeLine(v, line, (f) => `rgba(125,211,252,${0.1 * f})`, 0.8);
+      }
+      for (let lat = -60; lat <= 60; lat += 30) {
+        const line: [number, number][] = [];
+        for (let lon = -180; lon <= 180; lon += 5) line.push([lat, lon]);
+        globeLine(v, line, (f) => `rgba(167,139,250,${(lat === 0 ? 0.18 : 0.1) * f})`, lat === 0 ? 1 : 0.8);
+      }
+
+      // Scan line: a glowing parallel sweeping north → south; land under it lights up.
+      if (!still) {
+        const scanLat = 75 - ((t * 14) % 150);
+        const ring: [number, number][] = [];
+        for (let lon = -180; lon <= 180; lon += 4) ring.push([scanLat, lon]);
+        globeLine(v, ring, (f) => `rgba(34,211,238,${0.55 * f})`, 1.6);
+        octx.fillStyle = "rgba(186,230,253,0.9)";
+        for (let lon = -180; lon < 180; lon += 2) {
+          for (const dl of [-1.5, 0, 1.5]) {
+            if (!isLand(scanLat + dl, lon)) continue;
+            const p = latLon(scanLat + dl, lon);
+            project(p.x, p.y, p.z, v);
+            if (P.d > 0) continue;
+            octx.globalAlpha = blend * (dl === 0 ? 0.9 : 0.45);
+            octx.beginPath();
+            octx.arc(P.x, P.y, 1.6 * P.s, 0, Math.PI * 2);
+            octx.fill();
+          }
+        }
+        octx.globalAlpha = blend;
+      }
+
+      // City lights: twinkling points across the map.
+      CITY_LIGHTS.forEach(([lat, lon], i) => {
+        const p = latLon(lat, lon);
+        project(p.x, p.y, p.z, v);
+        if (P.d > 0) return;
+        const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * (0.8 + (i % 5) * 0.23) + i * 1.7));
+        octx.fillStyle = `rgba(253,230,138,${0.18 * tw})`;
+        octx.beginPath();
+        octx.arc(P.x, P.y, 5 * P.s, 0, Math.PI * 2);
+        octx.fill();
+        octx.fillStyle = `rgba(254,243,199,${0.9 * tw})`;
+        octx.beginPath();
+        octx.arc(P.x, P.y, 1.6 * P.s, 0, Math.PI * 2);
+        octx.fill();
+      });
+
       octx.lineWidth = 1.2;
       CITIES.forEach((c, ci) => {
         const b = latLon(c.lat, c.lon);
