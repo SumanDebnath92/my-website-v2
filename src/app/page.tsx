@@ -1891,12 +1891,12 @@ function ParticleStage({ scene }: { scene: Scene }) {
           drawA[i] = Math.min(1, m.alpha[i] * depthA * hl);
           drawS[i] = m.size[i] * sc;
         } else {
-          vx[i] += Math.cos(ang) * 0.03 * dt;
-          vy[i] += Math.sin(ang) * 0.03 * dt - 0.0015 * dt;
+          vx[i] += Math.cos(ang) * 0.015 * dt;
+          vy[i] += Math.sin(ang) * 0.015 * dt - 0.00075 * dt;
           const sp = Math.hypot(vx[i], vy[i]);
-          if (sp > 0.9) {
-            vx[i] *= 0.9 / sp;
-            vy[i] *= 0.9 / sp;
+          if (sp > 0.45) {
+            vx[i] *= 0.45 / sp;
+            vy[i] *= 0.45 / sp;
           }
         }
 
@@ -1956,8 +1956,9 @@ function ParticleStage({ scene }: { scene: Scene }) {
       ctx.globalCompositeOperation = portraitScene ? "source-over" : "lighter";
       const smokeEnd = Math.min(N, m.count + 650);
       for (let i = m.count; i < smokeEnd; i++) {
-        const size = 10 + (i % 7) * 3;
-        ctx.globalAlpha = (0.035 + (i % 5) * 0.008) * (portraitScene ? 0.36 : 0.6);
+        // Hero gets bigger, denser smoke puffs; other stages keep the calmer look.
+        const size = portraitScene ? 20 + (i % 7) * 6 : 10 + (i % 7) * 3;
+        ctx.globalAlpha = (0.035 + (i % 5) * 0.008) * (portraitScene ? 1.2 : 0.6);
         ctx.drawImage(sprites[ptone[i] < 4 ? 1 : 0], px[i] - size / 2, py[i] - size / 2, size, size);
       }
 
@@ -2196,7 +2197,7 @@ export default function Home() {
             className="absolute inset-0 opacity-70 lg:relative lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:opacity-100"
             style={{ y: visualY }}
           >
-            <NebulaSmoke />
+            <NebulaSmoke vivid={index === 0} />
             <ParticleStage scene={scene} />
             <div aria-hidden className="pointer-events-none absolute inset-y-[12%] left-0 hidden w-px bg-gradient-to-b from-transparent via-primary/30 to-transparent lg:block" />
             <SceneCaption scene={scene} />
@@ -2622,17 +2623,24 @@ function AmbientBackdrop({ progress, stage }: { progress: MotionValue<number>; s
 }
 
 const NEBULAE = [
-  { c: "rgb(56 189 248 / 0.12)", cls: "top-[8%] left-[10%] h-[60%] w-[70%]", x: [0, 60, -30, 0], y: [0, 40, 70, 0], d: 70 },
-  { c: "rgb(139 92 246 / 0.13)", cls: "top-[35%] right-[-10%] h-[65%] w-[65%]", x: [0, -70, -20, 0], y: [0, -50, 30, 0], d: 85 },
-  { c: "rgb(99 102 241 / 0.1)", cls: "bottom-[-15%] left-[-5%] h-[55%] w-[60%]", x: [0, 50, 90, 0], y: [0, -30, -60, 0], d: 100 },
-  { c: "rgb(34 211 238 / 0.07)", cls: "top-[-10%] right-[5%] h-[45%] w-[50%]", x: [0, -40, 20, 0], y: [0, 60, 20, 0], d: 78 },
+  { c: "rgb(56 189 248 / 0.38)", cls: "top-[8%] left-[10%] h-[60%] w-[70%]", x: [0, 60, -30, 0], y: [0, 40, 70, 0], d: 140 },
+  { c: "rgb(139 92 246 / 0.4)", cls: "top-[35%] right-[-10%] h-[65%] w-[65%]", x: [0, -70, -20, 0], y: [0, -50, 30, 0], d: 170 },
+  { c: "rgb(99 102 241 / 0.32)", cls: "bottom-[-15%] left-[-5%] h-[55%] w-[60%]", x: [0, 50, 90, 0], y: [0, -30, -60, 0], d: 200 },
+  { c: "rgb(34 211 238 / 0.24)", cls: "top-[-10%] right-[5%] h-[45%] w-[50%]", x: [0, -40, 20, 0], y: [0, 60, 20, 0], d: 156 },
 ];
 
 /** Soft, slow-drifting blue/violet nebula smoke behind the canvas. */
-function NebulaSmoke() {
+/** Hero (portrait) shows the smoke at full strength; other stages keep it calmer and fainter. */
+function NebulaSmoke({ vivid }: { vivid: boolean }) {
   const reduce = useReducedMotion();
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+    <motion.div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+      initial={false}
+      animate={{ opacity: vivid ? 0.5 : 0.32 }}
+      transition={{ duration: 1.2, ease: "easeInOut" }}
+    >
       {NEBULAE.map((n, i) => (
         <motion.div
           key={i}
@@ -2642,7 +2650,7 @@ function NebulaSmoke() {
           transition={{ duration: n.d, repeat: Infinity, ease: "easeInOut" }}
         />
       ))}
-    </div>
+    </motion.div>
   );
 }
 
