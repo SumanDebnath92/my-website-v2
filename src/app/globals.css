@@ -36,6 +36,8 @@ html {
   color-scheme: dark;
   /* Each 100vh band of the 400vh scroll track is one stage */
   scroll-snap-type: y mandatory;
+  /* No rubber-band bounce past the first/last stage — it made the locked stage shake. */
+  overscroll-behavior-y: none;
   scrollbar-width: none;
 }
 
@@ -48,6 +50,7 @@ body {
   color: var(--color-fg);
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 ::selection {

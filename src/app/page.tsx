@@ -36,6 +36,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -2059,17 +2060,16 @@ function sceneAria(s: Scene) {
  * Motion primitives
  * ════════════════════════════════════════════════════════════════════════════ */
 
-const SPRING = { stiffness: 140, damping: 22, mass: 0.6 };
 const TILT_SPRING = { stiffness: 260, damping: 20, mass: 0.5 };
 
 const stageVariants: Variants = {
-  enter: (dir: number) => ({ opacity: 0, y: dir * 70, z: -120, rotateX: dir * 8, filter: "blur(10px)" }),
+  enter: (dir: number) => ({ opacity: 0, y: dir * 50, filter: "blur(8px)" }),
   center: {
-    opacity: 1, y: 0, z: 0, rotateX: 0, filter: "blur(0px)",
+    opacity: 1, y: 0, filter: "blur(0px)",
     transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1], staggerChildren: 0.06, delayChildren: 0.08 },
   },
   exit: (dir: number) => ({
-    opacity: 0, y: dir * -60, z: -160, rotateX: dir * -6, filter: "blur(8px)",
+    opacity: 0, y: dir * -40, filter: "blur(6px)",
     transition: { duration: 0.35, ease: [0.4, 0, 1, 1] },
   }),
 };
@@ -2080,9 +2080,14 @@ const reducedStageVariants: Variants = {
   exit: { opacity: 0, transition: { duration: 0.15 } },
 };
 
+/**
+ * Items inside a stage only fade in (staggered). Movement comes from the stage itself — giving the
+ * items their own springy rise made them move *against* the stage when navigating back up, which
+ * read as the whole panel shaking.
+ */
 const itemVariants: Variants = {
-  enter: { opacity: 0, y: 24, scale: 0.97 },
-  center: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 180, damping: 22 } },
+  enter: { opacity: 0 },
+  center: { opacity: 1, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } },
   exit: { opacity: 0, transition: { duration: 0.15 } },
 };
 
@@ -2094,17 +2099,21 @@ const itemVariants: Variants = {
 function useStageController() {
   const { scrollY, scrollYProgress } = useScroll();
   const [state, setState] = useState({ index: 0, dir: 1 });
-  const local = useMotionValue(0); // signed distance from the active stage (-0.5 … 0.5)
 
   const sync = useCallback(
     (y: number) => {
       const vh = window.innerHeight || 1;
-      const raw = y / vh;
-      const index = Math.min(STAGE_COUNT - 1, Math.max(0, Math.round(raw)));
-      local.set(Math.max(-0.5, Math.min(0.5, raw - index)));
-      setState((prev) => (prev.index === index ? prev : { index, dir: index > prev.index ? 1 : -1 }));
+      // Clamp to the real track (ignore elastic overscroll past either end).
+      const raw = Math.min(STAGE_COUNT - 1, Math.max(0, y / vh));
+      setState((prev) => {
+        // Hysteresis: only switch once the scroll is clearly past the midpoint (0.6 of a stage),
+        // so tiny back-and-forth movement near the boundary can't flip stages repeatedly.
+        if (Math.abs(raw - prev.index) < 0.6) return prev;
+        const index = Math.min(STAGE_COUNT - 1, Math.max(0, Math.round(raw)));
+        return prev.index === index ? prev : { index, dir: index > prev.index ? 1 : -1 };
+      });
     },
-    [local],
+    [],
   );
 
   useMotionValueEvent(scrollY, "change", sync);
@@ -2129,7 +2138,7 @@ function useStageController() {
     window.history.replaceState(null, "", state.index === 0 ? window.location.pathname : `#${id}`);
   }, [state.index]);
 
-  return { ...state, local, progress: scrollYProgress };
+  return { ...state, progress: scrollYProgress };
 }
 
 function useGoToStage() {
@@ -2151,7 +2160,7 @@ function useGoToStage() {
 type WorkTab = "projects" | "experience";
 
 export default function Home() {
-  const { index, dir, local, progress } = useStageController();
+  const { index, dir, progress } = useStageController();
   const goTo = useGoToStage();
   const reduce = useReducedMotion();
 
@@ -2171,11 +2180,6 @@ export default function Home() {
             : { kind: "globe", variant: "experience" }
           : { kind: "globe", variant: "contact" };
 
-  const smoothLocal = useSpring(local, SPRING);
-  const stageRotate = useTransform(smoothLocal, [-0.5, 0.5], reduce ? [0, 0] : [5, -5]);
-  const stageY = useTransform(smoothLocal, [-0.5, 0.5], reduce ? [0, 0] : [40, -40]);
-  const stageScale = useTransform(smoothLocal, [-0.5, 0, 0.5], reduce ? [1, 1, 1] : [0.97, 1, 0.97]);
-  const visualY = useTransform(smoothLocal, [-0.5, 0.5], reduce ? [0, 0] : [-24, 24]);
 
   return (
     <>
@@ -2195,7 +2199,6 @@ export default function Home() {
           {/* Right: dynamic graphical stage */}
           <motion.div
             className="absolute inset-0 opacity-70 lg:relative lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:opacity-100"
-            style={{ y: visualY }}
           >
             <NebulaSmoke vivid={index === 0} />
             <ParticleStage scene={scene} />
@@ -2207,7 +2210,7 @@ export default function Home() {
 
           {/* Left: data & cards */}
           <main className="pointer-events-none absolute inset-0 [perspective:1400px] lg:relative lg:col-span-7 lg:col-start-1 lg:row-start-1">
-            <motion.div className="h-full w-full" style={{ rotateX: stageRotate, y: stageY, scale: stageScale }}>
+            <div className="h-full w-full">
               <AnimatePresence mode="wait" custom={dir} initial={false}>
                 <motion.section
                   key={STAGES[index].id}
@@ -2222,7 +2225,7 @@ export default function Home() {
                 >
                   <div className="w-full px-4 sm:px-8 lg:pr-8 lg:pl-10 xl:pr-12 xl:pl-14 2xl:pl-[max(3.5rem,calc(50vw-44rem))]">
                     <StageScroller
-                      dir={dir}
+                      startAtEnd={dir < 0 && index > 0}
                       onNext={() => index < STAGE_COUNT - 1 && goTo(index + 1)}
                       onPrev={() => index > 0 && goTo(index - 1)}
                       onMoreChange={setHasMore}
@@ -2244,7 +2247,7 @@ export default function Home() {
                   </div>
                 </motion.section>
               </AnimatePresence>
-            </motion.div>
+            </div>
             <ScrollHint visible={index === 0 && !hasMore} />
           </main>
         </div>
@@ -2268,13 +2271,14 @@ export default function Home() {
  */
 function StageScroller({
   children,
-  dir,
+  startAtEnd,
   onNext,
   onPrev,
   onMoreChange,
 }: {
   children: ReactNode;
-  dir: number;
+  /** Open scrolled to the end (when arriving from the stage below). */
+  startAtEnd: boolean;
   onNext: () => void;
   onPrev: () => void;
   onMoreChange: (more: boolean) => void;
@@ -2357,29 +2361,37 @@ function StageScroller({
     onMoreChange(more);
   }, [more, onMoreChange]);
 
+  // Arriving from the stage below: start at the end so reading continues upward naturally.
+  // Set before the first paint — no visible jump while the stage animates in.
+  const pinToEnd = useRef(startAtEnd);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (startAtEnd) el.scrollTop = el.scrollHeight;
+    gesture.current.edgeDir = startAtEnd ? 1 : -1;
+  }, [startAtEnd]);
+  // The end spacer renders once overflow is detected; top up to the true end once, while the
+  // stage is still fading in (invisible), then never touch the scroll position again.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !overflow || !pinToEnd.current) return;
+    el.scrollTop = el.scrollHeight;
+    pinToEnd.current = false;
+  }, [overflow]);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    gesture.current.edgeDir = dir < 0 ? 1 : -1;
-    const mountedAt = performance.now();
-    const ro = new ResizeObserver(() => {
-      // Keep pinned to the end while the entering stage finishes laying out.
-      if (dir < 0 && performance.now() - mountedAt < 1200) el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
-      measure();
-    });
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
-    const raf = requestAnimationFrame(() => {
-      // Arriving from the stage below: start at the end so reading continues upward naturally.
-      if (dir < 0) el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
-      measure();
-    });
+    const raf = requestAnimationFrame(measure);
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
       onMoreChange(false);
     };
-  }, [dir, measure, onMoreChange]);
+  }, [measure, onMoreChange]);
 
   const edges = () => {
     const el = ref.current!;
