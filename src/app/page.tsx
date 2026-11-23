@@ -434,6 +434,20 @@ const FLOWS: FlowSpec[] = [
 ];
 
 const HOME = { name: "Kolkata, IN", lat: 22.57, lon: 88.36 };
+type SatKind = "panel" | "dish" | "station" | "cube" | "probe" | "relay";
+/**
+ * Satellites orbiting the globe: radius (globe units), inclination, node rotation,
+ * angular speed (rad/s — slow), phase, design and accent colour.
+ */
+const SATELLITES: { r: number; inc: number; node: number; speed: number; phase: number; kind: SatKind; color: string }[] = [
+  { r: 1.0, inc: 0.95, node: 0.4, speed: 0.15, phase: 0, kind: "panel", color: "56,189,248" },
+  { r: 1.14, inc: -0.45, node: 1.9, speed: -0.1, phase: 2.2, kind: "station", color: "224,242,254" },
+  { r: 0.92, inc: 1.45, node: -0.7, speed: 0.19, phase: 4.1, kind: "cube", color: "52,211,153" },
+  { r: 1.06, inc: 0.3, node: 2.8, speed: 0.12, phase: 1.1, kind: "dish", color: "251,191,36" },
+  { r: 0.96, inc: -1.1, node: 0.9, speed: -0.16, phase: 3.3, kind: "probe", color: "167,139,250" },
+  { r: 1.2, inc: 0.6, node: -1.8, speed: 0.08, phase: 5.2, kind: "relay", color: "244,114,182" },
+];
+
 /** Twinkling city lights on the globe map (lat, lon). */
 const CITY_LIGHTS: [number, number][] = [
   [40.71, -74.0], [37.77, -122.42], [43.65, -79.38], [19.43, -99.13], [-23.55, -46.63], [-34.6, -58.38],
@@ -832,7 +846,7 @@ function buildGlobe(max: number, compact: boolean): Model {
   const golden = Math.PI * (3 - Math.sqrt(5));
   // Dense even sphere sampling; land points draw the dotted world map, a sparse set of ocean
   // points keeps the sphere's silhouette readable.
-  const N = compact ? 6000 : 11000;
+  const N = compact ? 11000 : 20000;
   for (let i = 0; i < N; i++) {
     const y = 1 - (i / (N - 1)) * 2;
     const r = Math.sqrt(1 - y * y);
@@ -842,9 +856,9 @@ function buildGlobe(max: number, compact: boolean): Model {
     const lon = (Math.atan2(x, -z) * 180) / Math.PI;
     if (isLand(lat, lon)) {
       pts.push(pt(x * GLOBE_R, y * GLOBE_R, z * GLOBE_R, {
-        tone: 5 + ((Math.random() * 3) | 0), alpha: 0.7 + Math.random() * 0.25, size: 1.25, tag: 0,
+        tone: 5 + ((Math.random() * 3) | 0), alpha: 0.85 + Math.random() * 0.15, size: 1.3, tag: 0,
       }));
-    } else if (i % 7 === 0) {
+    } else if (i % 9 === 0) {
       pts.push(pt(x * GLOBE_R, y * GLOBE_R, z * GLOBE_R, { tone: 1, alpha: 0.2, size: 0.9, tag: 3 }));
     }
   }
@@ -1021,10 +1035,24 @@ function ParticleStage({ scene }: { scene: Scene }) {
       if (sceneRef.current.kind === "portrait") remodel(true);
     };
 
+    // Drag-to-rotate for the globe (desktop, where the graphics panel is exposed). After the visitor
+    // lets go and stays idle for a moment, the globe eases back to its home orientation.
+    const globeDrag = { active: false, x0: 0, y0: 0, yaw0: 0, pitch0: 0, yaw: 0, pitch: 0, vyaw: 0, lastX: 0, lastMoveAt: 0, releasedAt: -1e9 };
+    const canDragGlobe = () => sceneRef.current.kind === "globe" && !compact && !still;
+
     const onMove = (e: PointerEvent) => {
       const r = over.getBoundingClientRect();
       const x = e.clientX - r.left;
       const y = e.clientY - r.top;
+      if (globeDrag.active) {
+        // Rotation angle runs opposite to screen motion, so subtract: dragging right turns the surface right.
+        globeDrag.yaw = globeDrag.yaw0 - (x - globeDrag.x0) * 0.0065;
+        globeDrag.pitch = Math.max(-0.9, Math.min(0.9, globeDrag.pitch0 + (y - globeDrag.y0) * 0.005));
+        // Per-frame spin speed for a gentle coast after release, capped so a fast flick can't spin the globe away.
+        globeDrag.vyaw = Math.max(-0.04, Math.min(0.04, -(x - globeDrag.lastX) * 0.0065));
+        globeDrag.lastMoveAt = performance.now();
+        globeDrag.lastX = x;
+      }
       mouse.inside = x >= 0 && y >= 0 && x <= r.width && y <= r.height;
       mouse.x = x;
       mouse.y = y;
@@ -1032,7 +1060,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
       mouse.ty = Math.max(-1, Math.min(1, (y / r.height - 0.5) * 2));
       const now = performance.now();
       const moved = Math.hypot(x - mouse.lastX, y - mouse.lastY);
-      if (mouse.inside && !still && moved > 26 && now - mouse.lastSpawn > 220) {
+      if (mouse.inside && !still && !globeDrag.active && moved > 26 && now - mouse.lastSpawn > 220) {
         ripples.push({ x, y, t0: now, k: 0.55 });
         if (ripples.length > 6) ripples.shift();
         mouse.lastSpawn = now;
@@ -1045,16 +1073,32 @@ function ParticleStage({ scene }: { scene: Scene }) {
       const x = e.clientX - r.left;
       const y = e.clientY - r.top;
       if (still || x < 0 || y < 0 || x > r.width || y > r.height) return;
+      if (canDragGlobe() && e.target === over) {
+        e.preventDefault(); // no text selection while dragging
+        Object.assign(globeDrag, {
+          active: true, x0: x, y0: y, lastX: x, vyaw: 0, yaw0: globeDrag.yaw, pitch0: globeDrag.pitch,
+        });
+        return;
+      }
       ripples.push({ x, y, t0: performance.now(), k: 1.4 });
       if (ripples.length > 6) ripples.shift();
+    };
+    const onUp = () => {
+      if (!globeDrag.active) return;
+      globeDrag.active = false;
+      globeDrag.releasedAt = performance.now();
+      if (globeDrag.releasedAt - globeDrag.lastMoveAt > 80) globeDrag.vyaw = 0; // pointer had stopped: no coast
     };
     const onLeave = () => {
       mouse.inside = false;
       mouse.tx = 0;
       mouse.ty = 0;
+      onUp();
     };
     window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointerdown", onDown, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     document.addEventListener("pointerleave", onLeave);
     window.addEventListener("blur", onLeave);
 
@@ -1070,8 +1114,8 @@ function ParticleStage({ scene }: { scene: Scene }) {
         rx = -0.3 + my * 0.15;
         R = Math.min(w * 0.45, h * 0.5);
       } else if (s.kind === "globe") {
-        ry = (HOME.lon * Math.PI) / 180 + 0.22 + Math.sin(t * 0.15) * 0.35 + mx * 0.2;
-        rx = ((HOME.lat * Math.PI) / 180) * 0.8 + my * 0.25;
+        ry = (HOME.lon * Math.PI) / 180 + 0.22 + Math.sin(t * 0.15) * 0.35 + mx * 0.2 + globeDrag.yaw;
+        rx = ((HOME.lat * Math.PI) / 180) * 0.8 + my * 0.25 + globeDrag.pitch;
         R = Math.min(w, h) * 0.46;
       }
       if (compact) {
@@ -1456,6 +1500,129 @@ function ParticleStage({ scene }: { scene: Scene }) {
       });
     };
 
+    /**
+     * Satellite glyphs in local space (x = across the orbit, y = along it; ~±14 px), each design distinct:
+     * panel (classic twin wings), station (truss + four wings), cube (CubeSat + whip antenna),
+     * dish (comms dish), probe (round body + boom + magnetometer), relay (long single-axis array).
+     */
+    const drawSatellite = (kind: SatKind, rgb: string, blink: boolean, phase: number) => {
+      const body = "#e0f2fe";
+      const panelFill = `rgba(${rgb},0.85)`;
+      const line = "rgba(224,242,254,0.9)";
+      octx.lineWidth = 0.8;
+      octx.strokeStyle = line;
+      const wing = (x: number, y: number, w: number, h: number) => {
+        octx.fillStyle = panelFill;
+        octx.fillRect(x, y, w, h);
+        octx.strokeRect(x, y, w, h);
+        // panel cell lines
+        octx.beginPath();
+        for (let cx = x + w / 3; cx < x + w - 0.5; cx += w / 3) {
+          octx.moveTo(cx, y);
+          octx.lineTo(cx, y + h);
+        }
+        octx.stroke();
+      };
+      const light = (x: number, y: number, color = "rgba(248,113,113,0.95)") => {
+        if (!blink) return;
+        octx.fillStyle = color;
+        octx.beginPath();
+        octx.arc(x, y, 1.3, 0, Math.PI * 2);
+        octx.fill();
+      };
+      switch (kind) {
+        case "panel":
+          wing(-12, -2.5, 8, 5);
+          wing(4, -2.5, 8, 5);
+          octx.fillStyle = body;
+          octx.fillRect(-3, -3, 6, 6);
+          light(0, -4.5);
+          break;
+        case "station":
+          octx.strokeStyle = line;
+          octx.beginPath();
+          octx.moveTo(-14, 0);
+          octx.lineTo(14, 0);
+          octx.stroke();
+          wing(-14, -7, 6, 5);
+          wing(-14, 2, 6, 5);
+          wing(8, -7, 6, 5);
+          wing(8, 2, 6, 5);
+          octx.fillStyle = body;
+          octx.fillRect(-4, -2.5, 8, 5);
+          octx.fillRect(-1.5, -5, 3, 10);
+          light(0, -6.5, "rgba(74,222,128,0.95)");
+          break;
+        case "cube":
+          octx.fillStyle = panelFill;
+          octx.fillRect(-3.5, -3.5, 7, 7);
+          octx.strokeRect(-3.5, -3.5, 7, 7);
+          octx.beginPath();
+          octx.moveTo(-3.5, 0);
+          octx.lineTo(3.5, 0);
+          octx.moveTo(0, -3.5);
+          octx.lineTo(0, 3.5);
+          octx.moveTo(3.5, -3.5);
+          octx.lineTo(9, -9);
+          octx.stroke();
+          light(9, -9, `rgba(${rgb},1)`);
+          break;
+        case "dish": {
+          octx.fillStyle = body;
+          octx.fillRect(-3, -2, 6, 6);
+          wing(-10, -1, 6, 4);
+          // dish: tilted arc that slowly scans
+          octx.save();
+          octx.translate(0, -2);
+          octx.rotate(Math.sin(phase * 0.8) * 0.5);
+          octx.fillStyle = panelFill;
+          octx.beginPath();
+          octx.ellipse(0, -4, 6, 2.6, 0, Math.PI, Math.PI * 2);
+          octx.closePath();
+          octx.fill();
+          octx.stroke();
+          octx.beginPath();
+          octx.moveTo(0, -4);
+          octx.lineTo(0, -8);
+          octx.stroke();
+          octx.restore();
+          light(4.5, 3);
+          break;
+        }
+        case "probe":
+          octx.fillStyle = panelFill;
+          octx.beginPath();
+          octx.arc(0, 0, 4, 0, Math.PI * 2);
+          octx.fill();
+          octx.stroke();
+          octx.beginPath();
+          octx.moveTo(0, 4);
+          octx.lineTo(0, 13);
+          octx.moveTo(-3, 0);
+          octx.lineTo(-10, 0);
+          octx.stroke();
+          octx.fillStyle = body;
+          octx.beginPath();
+          octx.arc(0, 13, 1.6, 0, Math.PI * 2);
+          octx.fill();
+          light(-10, 0, `rgba(${rgb},1)`);
+          break;
+        case "relay":
+          wing(-16, -1.8, 12, 3.6);
+          wing(4, -1.8, 12, 3.6);
+          octx.fillStyle = body;
+          octx.beginPath();
+          octx.moveTo(0, -4.5);
+          octx.lineTo(4, 0);
+          octx.lineTo(0, 4.5);
+          octx.lineTo(-4, 0);
+          octx.closePath();
+          octx.fill();
+          light(0, -6, "rgba(253,224,71,0.95)");
+          break;
+      }
+    };
+
     /** Front-facing polyline along a list of (lat, lon) points; back-side segments are skipped. */
     const globeLine = (v: View, pts: [number, number][], rgba: (front: number) => string, width: number) => {
       let px0 = 0, py0 = 0, prevFront = false;
@@ -1497,12 +1664,12 @@ function ParticleStage({ scene }: { scene: Scene }) {
       for (let lon = -180; lon < 180; lon += 30) {
         const line: [number, number][] = [];
         for (let lat = -80; lat <= 80; lat += 5) line.push([lat, lon]);
-        globeLine(v, line, (f) => `rgba(125,211,252,${0.1 * f})`, 0.8);
+        globeLine(v, line, (f) => `rgba(125,211,252,${0.24 * f})`, 1);
       }
       for (let lat = -60; lat <= 60; lat += 30) {
         const line: [number, number][] = [];
         for (let lon = -180; lon <= 180; lon += 5) line.push([lat, lon]);
-        globeLine(v, line, (f) => `rgba(167,139,250,${(lat === 0 ? 0.18 : 0.1) * f})`, lat === 0 ? 1 : 0.8);
+        globeLine(v, line, (f) => `rgba(167,139,250,${(lat === 0 ? 0.38 : 0.24) * f})`, lat === 0 ? 1.3 : 1);
       }
 
       // Scan line: a glowing parallel sweeping north → south; land under it lights up.
@@ -1510,7 +1677,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
         const scanLat = 75 - ((t * 14) % 150);
         const ring: [number, number][] = [];
         for (let lon = -180; lon <= 180; lon += 4) ring.push([scanLat, lon]);
-        globeLine(v, ring, (f) => `rgba(34,211,238,${0.55 * f})`, 1.6);
+        globeLine(v, ring, (f) => `rgba(34,211,238,${0.22 * f})`, 1.6); // 60% lighter than before (was 0.55)
         octx.fillStyle = "rgba(186,230,253,0.9)";
         for (let lon = -180; lon < 180; lon += 2) {
           for (const dl of [-1.5, 0, 1.5]) {
@@ -1518,7 +1685,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
             const p = latLon(scanLat + dl, lon);
             project(p.x, p.y, p.z, v);
             if (P.d > 0) continue;
-            octx.globalAlpha = blend * (dl === 0 ? 0.9 : 0.45);
+            octx.globalAlpha = blend * (dl === 0 ? 0.36 : 0.18); // 60% lighter (was 0.9 / 0.45)
             octx.beginPath();
             octx.arc(P.x, P.y, 1.6 * P.s, 0, Math.PI * 2);
             octx.fill();
@@ -1541,6 +1708,57 @@ function ParticleStage({ scene }: { scene: Scene }) {
         octx.beginPath();
         octx.arc(P.x, P.y, 1.6 * P.s, 0, Math.PI * 2);
         octx.fill();
+      });
+
+      // Satellites: tilted orbits with a faint path, a short trail, panels oriented along the motion.
+      const orbitPos = (o: (typeof SATELLITES)[number], th: number) => {
+        // Circle in the equatorial plane → tilt by inclination (about X) → rotate by node (about Y).
+        const x0 = Math.cos(th) * o.r, z0 = Math.sin(th) * o.r;
+        const y1 = -z0 * Math.sin(o.inc), z1 = z0 * Math.cos(o.inc);
+        const cn = Math.cos(o.node), sn = Math.sin(o.node);
+        project(x0 * cn + z1 * sn, y1, -x0 * sn + z1 * cn, v);
+      };
+      const hidden = () => P.d > 0 && Math.hypot(P.x - gx, P.y - gy) < gr; // behind the globe disc
+      SATELLITES.forEach((o, si) => {
+        // Orbit path
+        octx.lineWidth = 0.8;
+        let px0 = 0, py0 = 0, ok0 = false;
+        for (let k = 0; k <= 72; k++) {
+          orbitPos(o, (k / 72) * Math.PI * 2);
+          const ok = !hidden();
+          if (k > 0 && ok && ok0) {
+            octx.strokeStyle = `rgba(167,139,250,${P.d > 0 ? 0.06 : 0.16})`;
+            octx.beginPath();
+            octx.moveTo(px0, py0);
+            octx.lineTo(P.x, P.y);
+            octx.stroke();
+          }
+          px0 = P.x;
+          py0 = P.y;
+          ok0 = ok;
+        }
+        const th = o.phase + (still ? 0 : t * o.speed);
+        // Trail
+        for (let k = 6; k >= 1; k--) {
+          orbitPos(o, th - Math.sign(o.speed) * k * 0.035);
+          if (hidden()) continue;
+          octx.fillStyle = `rgba(${o.color},${0.35 * (1 - k / 7)})`;
+          octx.beginPath();
+          octx.arc(P.x, P.y, 1.6 * P.s, 0, Math.PI * 2);
+          octx.fill();
+        }
+        // Body
+        orbitPos(o, th + Math.sign(o.speed) * 0.01);
+        const ax = P.x, ay = P.y;
+        orbitPos(o, th);
+        if (hidden()) return;
+        const sx = P.x, sy = P.y, ss = P.s * (compact ? 0.85 : 1) * (P.d > 0 ? 0.85 : 1);
+        octx.save();
+        octx.translate(sx, sy);
+        octx.rotate(Math.atan2(ay - sy, ax - sx) + Math.PI / 2); // panels perpendicular to motion
+        octx.scale(ss, ss);
+        drawSatellite(o.kind, o.color, Math.sin(t * 3 + si * 2) > 0.55, t + si);
+        octx.restore();
       });
 
       octx.lineWidth = 1.2;
@@ -1615,11 +1833,25 @@ function ParticleStage({ scene }: { scene: Scene }) {
       if (!still) energy *= Math.pow(0.986, dt);
       if (energy < 0.55) blend = Math.min(1, blend + 0.03 * dt);
 
+      // Globe drag: a little inertia after release, then ease home once the visitor has been idle.
+      if (!globeDrag.active) {
+        globeDrag.yaw += globeDrag.vyaw * dt;
+        globeDrag.vyaw *= Math.pow(0.85, dt);
+        if (now - globeDrag.releasedAt > 2200) {
+          const k = 1 - Math.pow(1 - 0.035, dt);
+          globeDrag.yaw += (0 - globeDrag.yaw) * k;
+          globeDrag.pitch += (0 - globeDrag.pitch) * k;
+        }
+      }
+      const cursor = canDragGlobe() ? (globeDrag.active ? "grabbing" : "grab") : "";
+      if (over.style.cursor !== cursor) over.style.cursor = cursor;
+
       mouse.nx += (mouse.tx - mouse.nx) * 0.05 * dt;
       mouse.ny += (mouse.ty - mouse.ny) * 0.05 * dt;
 
       const v = viewFor(s);
       const group = s.kind === "stack" ? s.group : -1;
+      const globeScene = s.kind === "globe";
       const m = model;
       const springK = still ? 0.25 : 0.014 + 0.07 * (1 - energy) * (1 - energy);
       const flowAmp = still ? 0 : 0.5 * energy + 0.025;
@@ -1647,18 +1879,24 @@ function ParticleStage({ scene }: { scene: Scene }) {
           }
           vx[i] += (tx - x) * springK * dt + Math.cos(ang) * flowAmp * dt;
           vy[i] += (ty - y) * springK * dt + Math.sin(ang) * flowAmp * dt;
-          const depthA = m.screen ? 1 : Math.max(0.18, Math.min(1, 0.9 - dep * 0.5));
+          let depthA = m.screen ? 1 : Math.max(0.18, Math.min(1, 0.9 - dep * 0.5));
+          if (globeScene && (m.tag[i] === 0 || m.tag[i] === 3)) {
+            // Map dots: full strength on the near hemisphere, fading hard on the far side so the
+            // front continents read clearly through the transparent globe.
+            const back = Math.min(1, Math.max(0, (dep + 0.08) / 0.55));
+            depthA = 1 - back * 0.85;
+          }
           const tag = m.tag[i];
           const hl = group < 0 ? 1 : tag === group ? 1.3 : 0.28;
           drawA[i] = Math.min(1, m.alpha[i] * depthA * hl);
           drawS[i] = m.size[i] * sc;
         } else {
-          vx[i] += Math.cos(ang) * 0.07 * dt;
-          vy[i] += Math.sin(ang) * 0.07 * dt - 0.004 * dt;
+          vx[i] += Math.cos(ang) * 0.03 * dt;
+          vy[i] += Math.sin(ang) * 0.03 * dt - 0.0015 * dt;
           const sp = Math.hypot(vx[i], vy[i]);
-          if (sp > 2.2) {
-            vx[i] *= 2.2 / sp;
-            vy[i] *= 2.2 / sp;
+          if (sp > 0.9) {
+            vx[i] *= 0.9 / sp;
+            vy[i] *= 0.9 / sp;
           }
         }
 
@@ -1719,7 +1957,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
       const smokeEnd = Math.min(N, m.count + 650);
       for (let i = m.count; i < smokeEnd; i++) {
         const size = 10 + (i % 7) * 3;
-        ctx.globalAlpha = (0.035 + (i % 5) * 0.008) * (portraitScene ? 0.6 : 1);
+        ctx.globalAlpha = (0.035 + (i % 5) * 0.008) * (portraitScene ? 0.36 : 0.6);
         ctx.drawImage(sprites[ptone[i] < 4 ? 1 : 0], px[i] - size / 2, py[i] - size / 2, size, size);
       }
 
@@ -1783,6 +2021,8 @@ function ParticleStage({ scene }: { scene: Scene }) {
       img.onload = null;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       document.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("blur", onLeave);
     };
@@ -2288,6 +2528,27 @@ function StageScroller({
   );
 }
 
+const star = (x: number, y: number, r: number, a: number, c = "255,255,255") =>
+  `radial-gradient(${r}px ${r}px at ${x}px ${y}px, rgba(${c},${a}), transparent)`;
+const STAR_LAYERS = [
+  {
+    image: [
+      star(23, 41, 1, 0.7), star(97, 13, 1, 0.5), star(151, 88, 1.2, 0.6, "186,230,253"), star(212, 33, 1, 0.45),
+      star(61, 152, 1, 0.55), star(189, 171, 1.3, 0.65, "196,181,253"), star(127, 206, 1, 0.5), star(238, 121, 1, 0.4),
+    ].join(","),
+    size: "251px 233px",
+    min: 0.35, max: 0.75, d: 9,
+  },
+  {
+    image: [
+      star(44, 77, 1, 0.5), star(173, 19, 1, 0.4, "186,230,253"), star(290, 140, 1.2, 0.55), star(112, 260, 1, 0.45),
+      star(251, 301, 1, 0.5, "196,181,253"), star(19, 222, 1, 0.35), star(330, 48, 1, 0.45),
+    ].join(","),
+    size: "347px 331px",
+    min: 0.55, max: 0.25, d: 13,
+  },
+];
+
 const ORB_PALETTES = [
   ["#22d3ee", "#a78bfa", "#3b82f6"],
   ["#a78bfa", "#22d3ee", "#6366f1"],
@@ -2314,19 +2575,19 @@ function AmbientBackdrop({ progress, stage }: { progress: MotionValue<number>; s
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
       <motion.div
-        className="absolute top-[30%] left-[25%] h-[34rem] w-[34rem] -translate-x-1/2 rounded-full opacity-20 blur-[120px]"
+        className="absolute top-[30%] left-[25%] h-[34rem] w-[34rem] -translate-x-1/2 rounded-full opacity-[0.12] blur-[120px]"
         style={{ y: farY, scale: farScale }}
         animate={{ backgroundColor: c3 }}
         transition={{ duration: 1.2 }}
       />
       <motion.div
-        className="absolute bottom-[-10%] left-[30%] h-[22rem] w-[22rem] rounded-full opacity-20 blur-[100px]"
+        className="absolute bottom-[-10%] left-[30%] h-[22rem] w-[22rem] rounded-full opacity-[0.12] blur-[100px]"
         style={{ y: midY }}
         animate={{ backgroundColor: c2 }}
         transition={{ duration: 1.2 }}
       />
       <motion.div
-        className="absolute top-[-8%] left-[-8%] h-[22rem] w-[22rem] rounded-full opacity-30 blur-[90px]"
+        className="absolute top-[-8%] left-[-8%] h-[22rem] w-[22rem] rounded-full opacity-[0.18] blur-[90px]"
         style={{ y: nearY, x: nearX, scale: nearScale }}
         animate={{ backgroundColor: c1 }}
         transition={{ duration: 1.2 }}
@@ -2344,16 +2605,27 @@ function AmbientBackdrop({ progress, stage }: { progress: MotionValue<number>; s
           }}
         />
       </div>
+      {/* Deep-space starfield: two offset tile sizes so the pattern never visibly repeats. */}
+      {STAR_LAYERS.map((layer, i) => (
+        <motion.div
+          key={i}
+          className="absolute inset-0"
+          style={{ backgroundImage: layer.image, backgroundSize: layer.size }}
+          initial={{ opacity: layer.min }}
+          animate={reduce ? undefined : { opacity: [layer.min, layer.max, layer.min] }}
+          transition={{ duration: layer.d, repeat: Infinity, ease: "easeInOut" }}
+        />
+      ))}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,var(--color-bg)_100%)]" />
     </div>
   );
 }
 
 const NEBULAE = [
-  { c: "rgb(56 189 248 / 0.22)", cls: "top-[8%] left-[10%] h-[60%] w-[70%]", x: [0, 60, -30, 0], y: [0, 40, 70, 0], d: 26 },
-  { c: "rgb(139 92 246 / 0.24)", cls: "top-[35%] right-[-10%] h-[65%] w-[65%]", x: [0, -70, -20, 0], y: [0, -50, 30, 0], d: 32 },
-  { c: "rgb(99 102 241 / 0.18)", cls: "bottom-[-15%] left-[-5%] h-[55%] w-[60%]", x: [0, 50, 90, 0], y: [0, -30, -60, 0], d: 38 },
-  { c: "rgb(34 211 238 / 0.12)", cls: "top-[-10%] right-[5%] h-[45%] w-[50%]", x: [0, -40, 20, 0], y: [0, 60, 20, 0], d: 30 },
+  { c: "rgb(56 189 248 / 0.12)", cls: "top-[8%] left-[10%] h-[60%] w-[70%]", x: [0, 60, -30, 0], y: [0, 40, 70, 0], d: 70 },
+  { c: "rgb(139 92 246 / 0.13)", cls: "top-[35%] right-[-10%] h-[65%] w-[65%]", x: [0, -70, -20, 0], y: [0, -50, 30, 0], d: 85 },
+  { c: "rgb(99 102 241 / 0.1)", cls: "bottom-[-15%] left-[-5%] h-[55%] w-[60%]", x: [0, 50, 90, 0], y: [0, -30, -60, 0], d: 100 },
+  { c: "rgb(34 211 238 / 0.07)", cls: "top-[-10%] right-[5%] h-[45%] w-[50%]", x: [0, -40, 20, 0], y: [0, 60, 20, 0], d: 78 },
 ];
 
 /** Soft, slow-drifting blue/violet nebula smoke behind the canvas. */
