@@ -441,7 +441,7 @@ const FLOWS: FlowSpec[] = [
 ];
 
 const HOME = { name: "Kolkata, IN", lat: 22.57, lon: 88.36 };
-type SatKind = "panel" | "dish" | "station" | "weather" | "scope" | "relay";
+type SatKind = "panel" | "dish" | "station" | "weather" | "scope" | "relay" | "radar" | "broadband";
 /**
  * Satellites orbiting the globe: radius (globe units), inclination, node rotation,
  * angular speed (rad/s — slow), phase, design and accent colour.
@@ -461,6 +461,8 @@ const SATELLITES: { r: number; inc: number; node: number; speed: number; phase: 
   { r: 1.06, inc: 0.3, node: 2.8, speed: 0.12, phase: 1.1, kind: "dish", color: "251,191,36" },
   { r: 0.96, inc: -1.1, node: 0.9, speed: -0.16, phase: 3.3, kind: "scope", color: "167,139,250" },
   { r: 1.2, inc: 0.6, node: -1.8, speed: 0.08, phase: 5.2, kind: "relay", color: "244,114,182" },
+  { r: 1.1, inc: -0.8, node: -0.3, speed: 0.11, phase: 0.6, kind: "radar", color: "251,146,60" },
+  { r: 0.99, inc: 1.2, node: 2.2, speed: -0.13, phase: 2.7, kind: "broadband", color: "34,211,238" },
 ];
 
 /** Twinkling city lights on the globe map (lat, lon). */
@@ -1616,7 +1618,8 @@ function ParticleStage({ scene }: { scene: Scene }) {
     /**
      * Satellite glyphs in local space (x = across the orbit, y = along it; ~±14 px), each design distinct:
      * panel (classic twin wings), station (truss + four wings), weather (gold-foil bus + one-sided array + solar sail),
-     * dish (comms dish), scope (space telescope with side arrays), relay (long single-axis array).
+     * dish (comms dish), scope (space telescope with side arrays), relay (long single-axis array),
+     * radar (SAR imaging satellite: long tiled radar antenna + one wing), broadband (flat-panel internet satellite + one long array).
      */
     const drawSatellite = (kind: SatKind, rgb: string, blink: boolean, phase: number) => {
       const body = "#e0f2fe";
@@ -1792,6 +1795,89 @@ function ParticleStage({ scene }: { scene: Scene }) {
           octx.fillRect(-1, -12, 2, 2); // feed horn
           octx.restore();
           light(4.5, 3);
+          break;
+        }
+        case "radar": {
+          // Radar imaging satellite: compact bus, a long dark tiled SAR antenna along the direction of travel,
+          // and a single solar wing on the opposite side.
+          const cells = "rgba(30,64,175,0.9)";
+          octx.strokeStyle = line;
+          octx.beginPath();
+          octx.moveTo(3, -2);
+          octx.lineTo(5, -2); // antenna struts
+          octx.moveTo(3, 2);
+          octx.lineTo(5, 2);
+          octx.moveTo(-3, 0);
+          octx.lineTo(-6, 0); // wing yoke
+          octx.stroke();
+          octx.fillStyle = "#334155"; // SAR antenna
+          octx.fillRect(5, -13, 4, 26);
+          octx.strokeStyle = "rgba(148,163,184,0.85)";
+          octx.strokeRect(5, -13, 4, 26);
+          octx.beginPath();
+          for (let cy = -13 + 26 / 8; cy < 12.9; cy += 26 / 8) {
+            octx.moveTo(5, cy);
+            octx.lineTo(9, cy);
+          }
+          octx.moveTo(7, -13);
+          octx.lineTo(7, 13);
+          octx.stroke();
+          octx.strokeStyle = line;
+          octx.fillStyle = cells; // solar wing
+          octx.fillRect(-16, -2.8, 10, 5.6);
+          octx.strokeRect(-16, -2.8, 10, 5.6);
+          octx.beginPath();
+          for (let cx = -16 + 10 / 3; cx < -6.1; cx += 10 / 3) {
+            octx.moveTo(cx, -2.8);
+            octx.lineTo(cx, 2.8);
+          }
+          octx.stroke();
+          octx.fillStyle = body; // bus
+          octx.fillRect(-3, -4, 6, 8);
+          octx.strokeRect(-3, -4, 6, 8);
+          octx.fillStyle = `rgba(${rgb},0.9)`; // accent band
+          octx.fillRect(-3, -1, 6, 1.4);
+          light(0, -5.5, `rgba(${rgb},1)`);
+          break;
+        }
+        case "broadband": {
+          // Flat-panel broadband satellite: a thin rectangular chassis with phased-array tiles and one long
+          // solar array unfolding from its end.
+          const cells = "rgba(30,64,175,0.9)";
+          octx.strokeStyle = line;
+          octx.beginPath();
+          octx.moveTo(0, 1);
+          octx.lineTo(0, -1.5); // array mast
+          octx.stroke();
+          octx.fillStyle = cells; // long single array
+          octx.fillRect(-3.4, -17, 6.8, 15.5);
+          octx.strokeRect(-3.4, -17, 6.8, 15.5);
+          octx.beginPath();
+          for (let cy = -17 + 15.5 / 5; cy < -1.6; cy += 15.5 / 5) {
+            octx.moveTo(-3.4, cy);
+            octx.lineTo(3.4, cy);
+          }
+          octx.moveTo(0, -17);
+          octx.lineTo(0, -1.5);
+          octx.stroke();
+          const chassis = octx.createLinearGradient(-5, 0, 5, 0);
+          chassis.addColorStop(0, "#64748b");
+          chassis.addColorStop(0.5, "#e2e8f0");
+          chassis.addColorStop(1, "#475569");
+          octx.fillStyle = chassis; // flat chassis
+          octx.fillRect(-5, 1, 10, 7);
+          octx.strokeRect(-5, 1, 10, 7);
+          octx.strokeStyle = "rgba(15,23,42,0.45)"; // phased-array tiles
+          octx.beginPath();
+          for (const cx of [-1.7, 1.7]) {
+            octx.moveTo(cx, 1);
+            octx.lineTo(cx, 8);
+          }
+          octx.moveTo(-5, 4.5);
+          octx.lineTo(5, 4.5);
+          octx.stroke();
+          octx.strokeStyle = line;
+          light(4, 9.2, `rgba(${rgb},1)`);
           break;
         }
         case "relay":
