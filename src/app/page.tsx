@@ -32,6 +32,8 @@ import {
   Mouse,
   Phone,
   Sparkles,
+  ThumbsDown,
+  ThumbsUp,
   Users,
   VideoOff,
   Workflow,
@@ -2196,22 +2198,63 @@ export default function Home() {
     (n: number) => {
       const target = GESTURE_TARGETS.find((g) => g.fingers === n);
       if (target) {
-        // Number = fingers shown (5 = Experience); stage = where the page actually lives.
-        setGestureFlash({ id: Date.now(), page: n, label: target.label, stage: n === 5 ? 2 : n - 1 });
+        // Number = fingers shown (4 = Experience); stage = where the page actually lives.
+        setGestureFlash({ id: Date.now(), page: n, label: target.label, stage: n === 4 ? 2 : n === 5 ? 3 : n - 1 });
       }
-      // 1 Intro · 2 Tech stack · 3 Projects · 4 Contact · 5 Experience (Work stage, Experience tab)
+      // 1 Intro · 2 Tech stack · 3 Projects · 4 Experience (Work stage, Experience tab) · 5 Contact
       if (n === 1) goTo(0);
       else if (n === 2) goTo(1);
       else if (n === 3) {
         setWorkTab("projects");
         goTo(2);
-      } else if (n === 4) goTo(3);
-      else if (n === 5) {
+      } else if (n === 4) {
         setWorkTab("experience");
         goTo(2);
-      }
+      } else if (n === 5) goTo(3);
     },
     [goTo],
+  );
+
+  // Thumb gesture inside the current page: step through cards / projects, or scroll the panel.
+  const scrollPanelTo = useCallback((selector: string) => {
+    // Keep an element fully visible inside the left panel, scrolling only as much as needed
+    // (never the page track itself). Padding clears the panel's top/bottom fades.
+    const sc = document.getElementById("stage-scroll");
+    const el = sc?.querySelector<HTMLElement>(selector);
+    if (!sc || !el) return;
+    const pad = 64;
+    const box = sc.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    let delta = 0;
+    if (r.top < box.top + pad) delta = r.top - (box.top + pad); // above view → scroll up
+    else if (r.bottom > box.bottom - pad) {
+      // below view → scroll down just enough; if the card is taller than the view, align its top
+      delta = Math.min(r.bottom - (box.bottom - pad), r.top - (box.top + pad));
+    }
+    if (Math.abs(delta) > 2) sc.scrollBy({ top: delta, behavior: "smooth" });
+  }, []);
+  const onStep = useCallback(
+    (dir: 1 | -1) => {
+      const sc = document.getElementById("stage-scroll");
+      if (index === 1) {
+        // Tech stack: select the next / previous card (also lights its orbit on the right).
+        const at = STACK_CARD_ORDER.indexOf(activeGroup);
+        const next = at < 0 ? (dir > 0 ? 0 : STACK_CARD_ORDER.length - 1) : Math.min(STACK_CARD_ORDER.length - 1, Math.max(0, at + dir));
+        const group = STACK_CARD_ORDER[next];
+        setActiveGroup(group);
+        if (next === 0) sc?.scrollTo({ top: 0, behavior: "smooth" }); // first card: show the page heading too
+        else window.setTimeout(() => scrollPanelTo(`[data-group="${group}"]`), 30);
+      } else if (index === 2 && workTab === "projects") {
+        // Projects: open the next / previous accordion item and bring it into view.
+        const next = Math.min(PROJECTS.length - 1, Math.max(0, activeProject + dir));
+        setActiveProject(next);
+        window.setTimeout(() => scrollPanelTo(`[data-project="${next}"]`), 380); // after the accordion opens
+      } else if (sc) {
+        // Experience, Intro, Contact: scroll the panel a comfortable chunk.
+        sc.scrollBy({ top: dir * sc.clientHeight * 0.55, behavior: "smooth" });
+      }
+    },
+    [index, workTab, activeGroup, activeProject, scrollPanelTo],
   );
 
   const scene: Scene =
@@ -2298,7 +2341,7 @@ export default function Home() {
         </div>
 
         <ProgressDots active={index} progress={progress} onNavigate={goTo} pulse={gestureFlash} />
-        <HandGestures enabled={gesturesOn} onEnabledChange={setGesturesOn} onFingers={onFingers} confirm={gestureFlash} />
+        <HandGestures enabled={gesturesOn} onEnabledChange={setGesturesOn} onFingers={onFingers} onStep={onStep} confirm={gestureFlash} />
         <StageCounter active={index} />
       </div>
       <GestureIntroModal open={gestureIntro} onAccept={acceptGestures} onSkip={skipGestures} />
@@ -2311,13 +2354,16 @@ export default function Home() {
  * Everything runs on-device; video frames never leave the browser.
  * ════════════════════════════════════════════════════════════════════════════ */
 
+/** Thumb-gesture stepping order on the Tech stack page: Core expertise, then the four stack cards. */
+const STACK_CARD_ORDER = [4, 0, 1, 2, 3];
+
 /** What each finger count does. */
 const GESTURE_TARGETS = [
   { fingers: 1, label: "Intro" },
   { fingers: 2, label: "Tech stack" },
   { fingers: 3, label: "Projects" },
-  { fingers: 4, label: "Contact" },
-  { fingers: 5, label: "Experience" },
+  { fingers: 4, label: "Experience" },
+  { fingers: 5, label: "Contact" },
 ] as const;
 
 const MEDIAPIPE_VERSION = "1.2.2"; // keep in sync with package.json
@@ -2325,6 +2371,11 @@ const HAND_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 const GESTURE_HOLD_MS = 450; // a count must be held this long before it navigates
 const GESTURE_DETECT_INTERVAL_MS = 66; // ~15 detections per second
+const THUMB_HOLD_MS = 350; // thumb up/down must be held this long before the first step
+const THUMB_REPEAT_MS = 950; // …then it repeats at this pace while held
+// Gesture tokens: 1–5 finger counts, plus the two thumb gestures.
+const TOKEN_THUMB_UP = 101; // back / scroll up
+const TOKEN_THUMB_DOWN = 102; // next / scroll down
 
 type Landmark = { x: number; y: number; z: number };
 type HandLandmarkerLike = { detectForVideo(v: HTMLVideoElement, ts: number): { landmarks: Landmark[][] }; close(): void };
@@ -2374,6 +2425,16 @@ function fingersUp(raw: Landmark[], aspect: number): boolean[] {
   return [thumb, ...four];
 }
 
+/** Thumb-only pose pointing clearly up or down: "up" / "down", otherwise null. */
+function thumbDirection(raw: Landmark[], up: boolean[], aspect: number): "up" | "down" | null {
+  if (!up[0] || up[1] || up[2] || up[3] || up[4]) return null;
+  const size = Math.hypot((raw[0].x - raw[9].x) * aspect, raw[0].y - raw[9].y) || 1e-3;
+  const dx = (raw[4].x - raw[2].x) * aspect;
+  const dy = raw[4].y - raw[2].y; // screen y grows downward
+  if (Math.abs(dy) < Math.abs(dx) * 1.2 || Math.abs(dy) < size * 0.35) return null; // sideways / unclear
+  return dy < 0 ? "up" : "down";
+}
+
 const HAND_LINKS: [number, number][] = [
   [0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
   [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17],
@@ -2391,11 +2452,14 @@ function HandGestures({
   enabled,
   onEnabledChange,
   onFingers,
+  onStep,
   confirm,
 }: {
   enabled: boolean;
   onEnabledChange: (on: boolean) => void;
   onFingers: (n: number) => void;
+  /** Thumb gesture inside the current page: +1 = next / scroll down, -1 = back / scroll up. */
+  onStep: (dir: 1 | -1) => void;
   /** Gesture navigation just happened: flash the window and show "Moved to …". */
   confirm?: GestureConfirm | null;
 }) {
@@ -2404,9 +2468,11 @@ function HandGestures({
   const [status, setStatus] = useState<GestureStatus>("off");
   const [live, setLive] = useState({ fingers: 0, hold: 0, fired: 0, seen: false, up: [false, false, false, false, false] });
   const onFingersRef = useRef(onFingers);
+  const onStepRef = useRef(onStep);
   useEffect(() => {
     onFingersRef.current = onFingers;
-  }, [onFingers]);
+    onStepRef.current = onStep;
+  }, [onFingers, onStep]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -2420,6 +2486,7 @@ function HandGestures({
     let since = 0;
     let fired = 0;
     let emptySince = 0;
+    let lastStep = 0;
 
     const start = async () => {
       setStatus("loading");
@@ -2438,34 +2505,47 @@ function HandGestures({
         const tick = () => {
           if (cancelled) return;
           const now = performance.now();
+          // token: 1–5 = finger count, TOKEN_THUMB_* = thumb gesture, -1 = unclear pose, 0 = no hand
           let n = 0;
           let up = [false, false, false, false, false];
           let hand: Landmark[] | undefined;
           if (video.readyState >= 2) {
             hand = landmarker.detectForVideo(video, now).landmarks[0];
             if (hand) {
-              up = fingersUp(hand, (video.videoWidth || 4) / (video.videoHeight || 3));
-              n = up.filter(Boolean).length;
+              const aspect = (video.videoWidth || 4) / (video.videoHeight || 3);
+              up = fingersUp(hand, aspect);
+              const thumb = thumbDirection(hand, up, aspect);
+              const count = up.filter(Boolean).length;
+              n = thumb ? (thumb === "down" ? TOKEN_THUMB_DOWN : TOKEN_THUMB_UP) : up[0] && count === 1 ? -1 : count;
             }
           }
           drawHand(hand);
 
-          if (n === 0) {
+          if (n <= 0) {
             if (!emptySince) emptySince = now;
-            if (now - emptySince > 300) fired = 0; // hand gone: allow the same count to fire again
+            if (now - emptySince > 300) fired = 0; // hand gone: allow the same gesture to fire again
             candidate = 0;
           } else {
             emptySince = 0;
             if (n !== candidate) {
               candidate = n;
               since = now;
+              lastStep = 0; // a fresh gesture steps as soon as it's held; the repeat delay is only for a continued hold
             }
-            if (n !== fired && now - since >= GESTURE_HOLD_MS) {
+            if (n >= 100) {
+              // Thumb up/down: step within the page, repeating while held.
+              if (now - since >= THUMB_HOLD_MS && now - lastStep >= THUMB_REPEAT_MS) {
+                lastStep = now;
+                fired = n;
+                onStepRef.current(n === TOKEN_THUMB_DOWN ? 1 : -1);
+              }
+            } else if (n !== fired && now - since >= GESTURE_HOLD_MS) {
               fired = n;
               onFingersRef.current(n);
             }
           }
-          const hold = candidate && candidate !== fired ? Math.min(1, (now - since) / GESTURE_HOLD_MS) : candidate ? 1 : 0;
+          const holdMs = candidate >= 100 ? THUMB_HOLD_MS : GESTURE_HOLD_MS;
+          const hold = candidate && candidate !== fired ? Math.min(1, (now - since) / holdMs) : candidate ? 1 : 0;
           setLive({ fingers: candidate, hold, fired, seen: !!hand, up });
           timer = window.setTimeout(tick, GESTURE_DETECT_INTERVAL_MS);
         };
@@ -2541,6 +2621,7 @@ function HandGestures({
 
   const active = enabled && status === "on";
   const target = GESTURE_TARGETS.find((g) => g.fingers === live.fingers);
+  const thumbToken = live.fingers >= 100 ? live.fingers : 0;
   const toggleLabel =
     status === "loading" ? "Starting camera…"
       : active ? "Hand gestures on"
@@ -2658,7 +2739,13 @@ function HandGestures({
                     </linearGradient>
                   </defs>
                 </svg>
-                <span className="font-mono text-sm font-bold text-fg">{live.fingers || "–"}</span>
+                {thumbToken === TOKEN_THUMB_UP ? (
+                  <ThumbsUp className="h-3.5 w-3.5 text-fg" aria-hidden />
+                ) : thumbToken === TOKEN_THUMB_DOWN ? (
+                  <ThumbsDown className="h-3.5 w-3.5 text-fg" aria-hidden />
+                ) : (
+                  <span className="font-mono text-sm font-bold text-fg">{live.fingers || "–"}</span>
+                )}
               </span>
               <span className="min-w-0 font-mono text-[10px] leading-tight">
                 {confirm ? (
@@ -2670,9 +2757,13 @@ function HandGestures({
                   </>
                 ) : (
                   <>
-                    <span className="block text-fg">{target ? target.label : "Show 1–5 fingers"}</span>
+                    <span className="block text-fg">
+                      {thumbToken === TOKEN_THUMB_DOWN ? "Next ↓" : thumbToken === TOKEN_THUMB_UP ? "Back ↑" : target ? target.label : "Show 1–5 fingers"}
+                    </span>
                     <span className="block text-muted">
-                      {target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : "Palm facing the camera"}
+                      {thumbToken
+                        ? live.fired === live.fingers ? "Keep holding to repeat" : "Hold steady…"
+                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : "Or thumb up / down"}
                     </span>
                   </>
                 )}
@@ -2800,7 +2891,7 @@ function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept
               </h2>
               <p id="gesture-modal-desc" className="mt-3 text-[15px] leading-relaxed text-fg-soft">
                 Tap <span className="text-fg">Let&apos;s do it</span>, allow camera access when your browser asks, then hold up 1–5
-                fingers to go straight to any section — no scrolling needed.
+                fingers to jump to a section — and point your thumb down or up to move through what&apos;s on it.
               </p>
 
               <ul className="mt-5 grid grid-cols-5 gap-1.5" aria-label="Finger shortcuts">
@@ -2814,6 +2905,23 @@ function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept
                     <span className="block font-mono text-[9.5px] leading-tight text-fg-soft">{g.label}</span>
                   </li>
                 ))}
+              </ul>
+
+              <ul className="mt-1.5 grid grid-cols-2 gap-1.5" aria-label="Thumb gestures, on any page">
+                <li className="flex items-center gap-2 rounded-xl border border-line bg-white/[0.03] px-2.5 py-2">
+                  <ThumbsDown className="h-5 w-5 shrink-0 text-secondary" aria-hidden />
+                  <span className="font-mono text-[10px] leading-tight text-fg-soft">
+                    <span className="block text-fg">Thumb down</span>
+                    Next card · scroll down
+                  </span>
+                </li>
+                <li className="flex items-center gap-2 rounded-xl border border-line bg-white/[0.03] px-2.5 py-2">
+                  <ThumbsUp className="h-5 w-5 shrink-0 text-secondary" aria-hidden />
+                  <span className="font-mono text-[10px] leading-tight text-fg-soft">
+                    <span className="block text-fg">Thumb up</span>
+                    Previous · scroll up
+                  </span>
+                </li>
               </ul>
 
               <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row">
@@ -3455,15 +3563,17 @@ function TiltCard({
   };
 
   return (
-    <motion.div variants={itemVariants} className={`[perspective:1000px] ${className}`}>
+    <motion.div variants={itemVariants} className={`relative [perspective:1000px] ${className}`}>
       <motion.div
         onPointerMove={onMove}
         onPointerLeave={onLeave}
         whileHover={reduce ? undefined : { scale: 1.012 }}
+        // A selected card (hover or hand gesture) gets the same gentle lift as hovering.
+        animate={reduce ? undefined : { scale: active ? 1.015 : 1, y: active ? -2 : 0 }}
         transition={{ type: "spring", stiffness: 300, damping: 22 }}
         style={{ rotateX, rotateY }}
         className={`glass group relative h-full overflow-hidden rounded-2xl transition-[border-color,box-shadow] duration-300 hover:border-primary/30 ${
-          active ? "border-secondary/40 shadow-[0_0_40px_-12px_rgb(167_139_250/0.6)]" : ""
+          active ? "border-transparent" : ""
         }`}
       >
         <motion.div
@@ -3471,6 +3581,25 @@ function TiltCard({
           className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
           style={{ background: glare }}
         />
+        {/* Selected (drawn on the card itself so it tilts with it): darker deep-blue background for contrast,
+            crisp cyan border with a soft inner glow, and a left accent bar. */}
+        <AnimatePresence>
+          {active && (
+            <motion.div
+              key="selected"
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-2xl bg-[rgb(6_14_34/0.55)]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <span className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/[0.07] to-transparent" />
+              <span className="absolute inset-0 rounded-2xl border-[1.5px] border-primary shadow-[inset_0_0_18px_-6px_rgb(34_211_238/0.55)]" />
+              <span className="absolute top-3 bottom-3 left-0 w-[3px] rounded-full bg-primary shadow-[0_0_8px_rgb(34_211_238/0.7)]" />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="relative h-full">{children}</div>
       </motion.div>
     </motion.div>
@@ -3609,9 +3738,29 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
  * ════════════════════════════════════════════════════════════════════════════ */
 
 function StackStage({ activeGroup, onGroup }: { activeGroup: number; onGroup: (g: number) => void }) {
+  // Only genuine mouse movement may change the selection. When the panel scrolls under a resting cursor
+  // (e.g. a thumb-gesture step), browsers fire synthetic hover events with zero movement — ignore those
+  // so they can't steal or clear the gesture-selected card.
+  const lastRealMove = useRef(0);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (e.movementX !== 0 || e.movementY !== 0) lastRealMove.current = performance.now();
+    };
+    window.addEventListener("mousemove", onMove, { passive: true });
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
   const bind = (g: number) => ({
-    onMouseEnter: () => onGroup(g),
-    onMouseLeave: () => onGroup(-1),
+    "data-group": g,
+    onMouseEnter: () => {
+      if (performance.now() - lastRealMove.current < 120) onGroup(g);
+    },
+    // Entering after a pause: the enter event precedes the move that caused it, so also select on real movement.
+    onMouseMove: (e: React.MouseEvent) => {
+      if ((e.movementX !== 0 || e.movementY !== 0) && activeGroup !== g) onGroup(g);
+    },
+    onMouseLeave: () => {
+      if (performance.now() - lastRealMove.current < 120) onGroup(-1);
+    },
     onFocus: () => onGroup(g),
     onBlur: () => onGroup(-1),
     onClick: () => onGroup(g),
@@ -3820,7 +3969,7 @@ function ProjectRow({
 }) {
   const reduce = useReducedMotion();
   return (
-    <motion.li variants={itemVariants} onMouseEnter={onActivate}>
+    <motion.li variants={itemVariants} onMouseEnter={onActivate} data-project={index}>
       <TiltCard intensity={active ? 3 : 7} active={active}>
         <article>
           <h3>
