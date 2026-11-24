@@ -37,7 +37,6 @@ import {
   Users,
   VideoOff,
   Workflow,
-  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -2631,20 +2630,29 @@ function HandGestures({
 
   return (
     <>
-      {/* Header toggle (top-right) */}
+      {/* One panel (top-right): the toggle row is its header, and the live preview unfolds below it. */}
+      <div
+        className={`glass absolute top-3 right-3 z-40 overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-300 sm:top-4 sm:right-5 sm:w-36 ${
+          enabled ? "w-36" : ""
+        } ${
+          confirm
+            ? "border-primary/70 shadow-[0_0_28px_-4px_rgb(34_211_238/0.7)]"
+            : active
+              ? "border-primary/50 shadow-[0_0_24px_-4px_rgb(34_211_238/0.55)]"
+              : "hover:border-primary/30"
+        }`}
+      >
       <button
         type="button"
         onClick={() => onEnabledChange(!enabled)}
         aria-pressed={enabled}
         aria-label={toggleLabel}
         title={toggleLabel}
-        className={`glass group absolute top-3 right-3 z-40 flex h-10 cursor-pointer items-center gap-2 rounded-full pr-3.5 pl-2.5 font-mono text-[11px] tracking-wide transition-[border-color,box-shadow] duration-300 sm:top-4 sm:right-5 ${
-          active
-            ? "border-primary/50 text-fg shadow-[0_0_24px_-4px_rgb(34_211_238/0.55)]"
-            : "text-muted hover:border-primary/30 hover:text-fg-soft"
+        className={`group flex h-10 w-full cursor-pointer items-center gap-2 pr-3 pl-2.5 font-mono text-[11px] tracking-wide transition-colors duration-300 ${
+          active ? "text-fg" : "text-muted hover:text-fg-soft"
         }`}
       >
-        <span className="relative flex h-6 w-6 items-center justify-center">
+        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
           {status === "loading" ? (
             <LoaderCircle className="h-4 w-4 animate-spin text-primary" aria-hidden />
           ) : status === "denied" || status === "error" ? (
@@ -2654,10 +2662,10 @@ function HandGestures({
           )}
           {active && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 animate-pulse rounded-full bg-success" />}
         </span>
-        <span className="hidden sm:inline">Gestures</span>
+        <span className={`${enabled ? "inline" : "hidden"} flex-1 text-left sm:inline`}>Gestures</span>
         <span
           aria-hidden
-          className={`relative h-4 w-7 rounded-full border transition-colors duration-300 ${
+          className={`relative h-4 w-7 shrink-0 rounded-full border transition-colors duration-300 ${
             active ? "border-primary/60 bg-primary/25" : "border-line-strong bg-white/[0.04]"
           }`}
         >
@@ -2669,21 +2677,19 @@ function HandGestures({
         </span>
       </button>
 
-      {/* Live preview: mirrored camera, hand skeleton, finger count and hold-to-go ring */}
-      <AnimatePresence>
+      {/* Live preview: hand skeleton, finger count and hold-to-go ring */}
+      <AnimatePresence initial={false}>
         {enabled && (
           <motion.div
             key="cam"
-            initial={{ opacity: 0, y: -8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.96 }}
-            transition={{ duration: 0.25 }}
-            className={`glass absolute top-16 right-3 z-40 w-36 overflow-hidden rounded-2xl transition-[border-color,box-shadow] duration-300 sm:top-[4.25rem] sm:right-5 sm:w-40 ${
-              confirm ? "border-primary/70 shadow-[0_0_28px_-4px_rgb(34_211_238/0.7)]" : ""
-            }`}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            className="border-t border-line"
           >
             <div
-              className="relative aspect-[4/3] w-full bg-[radial-gradient(circle_at_50%_60%,rgba(34,211,238,0.08),transparent_70%)]"
+              className="relative aspect-[4/3] w-full"
               style={{
                 backgroundImage:
                   "radial-gradient(circle at 50% 60%, rgba(34,211,238,0.08), transparent 70%), linear-gradient(rgba(125,211,252,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.06) 1px, transparent 1px)",
@@ -2695,27 +2701,19 @@ function HandGestures({
               <canvas ref={overlayRef} width={320} height={240} className="absolute inset-0 h-full w-full -scale-x-100" />
               {status === "on" && !live.seen && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-primary/50">
-                  <FingersIcon count={5} className="h-10 w-10" />
+                  <FingersIcon count={5} className="h-9 w-9" />
                   <span className="font-mono text-[10px] text-muted">Show your hand</span>
                 </div>
               )}
               {status === "loading" && (
                 <div className="absolute inset-0 flex items-center justify-center gap-2 font-mono text-[10px] text-fg-soft">
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden />
-                  Loading hand tracking…
+                  Loading…
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => onEnabledChange(false)}
-                aria-label="Turn off hand gestures"
-                className="absolute top-1.5 right-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/50 text-fg-soft transition-colors hover:text-fg"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
             </div>
-            <div className="flex items-center gap-2 px-2.5 py-1.5" aria-live="polite">
-              <span className="relative flex h-7 w-7 shrink-0 items-center justify-center">
+            <div className="flex items-center gap-1.5 px-2 py-1.5" aria-live="polite">
+              <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
                 {confirm && (
                   <motion.span
                     key={confirm.id}
@@ -2747,7 +2745,7 @@ function HandGestures({
                   <span className="font-mono text-sm font-bold text-fg">{live.fingers || "–"}</span>
                 )}
               </span>
-              <span className="min-w-0 font-mono text-[10px] leading-tight">
+              <span className="min-w-0 flex-1 font-mono text-[10px] leading-tight whitespace-nowrap">
                 {confirm ? (
                   <>
                     <span className="block text-primary">Moved to</span>
@@ -2757,13 +2755,13 @@ function HandGestures({
                   </>
                 ) : (
                   <>
-                    <span className="block text-fg">
+                    <span className="block truncate text-fg">
                       {thumbToken === TOKEN_THUMB_DOWN ? "Next ↓" : thumbToken === TOKEN_THUMB_UP ? "Back ↑" : target ? target.label : "Show 1–5 fingers"}
                     </span>
-                    <span className="block text-muted">
+                    <span className="block truncate text-muted">
                       {thumbToken
-                        ? live.fired === live.fingers ? "Keep holding to repeat" : "Hold steady…"
-                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : "Or thumb up / down"}
+                        ? live.fired === live.fingers ? "Hold to repeat" : "Hold steady…"
+                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : "or thumb ↑ / ↓"}
                     </span>
                   </>
                 )}
@@ -2772,6 +2770,7 @@ function HandGestures({
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </>
   );
 }
