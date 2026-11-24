@@ -37,6 +37,7 @@ import {
   Users,
   VideoOff,
   Workflow,
+  Crosshair,
 } from "lucide-react";
 import {
   useCallback,
@@ -440,17 +441,25 @@ const FLOWS: FlowSpec[] = [
 ];
 
 const HOME = { name: "Kolkata, IN", lat: 22.57, lon: 88.36 };
-type SatKind = "panel" | "dish" | "station" | "cube" | "probe" | "relay";
+type SatKind = "panel" | "dish" | "station" | "weather" | "scope" | "relay";
 /**
  * Satellites orbiting the globe: radius (globe units), inclination, node rotation,
  * angular speed (rad/s — slow), phase, design and accent colour.
  */
+/** Candidate launch sites (lat, lon): a grid — the rocket lifts off from one on the far side of the globe. */
+const LAUNCH_PADS: [number, number][] = [];
+for (let la = -45; la <= 45; la += 15) for (let lo = -180; lo < 180; lo += 15) LAUNCH_PADS.push([la, lo]);
+/** Rocket launch timeline (seconds after a satellite is destroyed): lift-off → deploy → done. */
+const LAUNCH = { ignite: 0.25, liftoff: 0.5, deploy: 6.5, satIn: 0.9, end: 8.5 };
+const SAT_DESTROYED_EVENT = "portfolio:satellite-destroyed";
+const SAT_SCALE = 1.12; // satellites drawn 12% larger
+
 const SATELLITES: { r: number; inc: number; node: number; speed: number; phase: number; kind: SatKind; color: string }[] = [
   { r: 1.0, inc: 0.95, node: 0.4, speed: 0.15, phase: 0, kind: "panel", color: "56,189,248" },
   { r: 1.14, inc: -0.45, node: 1.9, speed: -0.1, phase: 2.2, kind: "station", color: "224,242,254" },
-  { r: 0.92, inc: 1.45, node: -0.7, speed: 0.19, phase: 4.1, kind: "cube", color: "52,211,153" },
+  { r: 0.92, inc: 1.45, node: -0.7, speed: 0.19, phase: 4.1, kind: "weather", color: "52,211,153" },
   { r: 1.06, inc: 0.3, node: 2.8, speed: 0.12, phase: 1.1, kind: "dish", color: "251,191,36" },
-  { r: 0.96, inc: -1.1, node: 0.9, speed: -0.16, phase: 3.3, kind: "probe", color: "167,139,250" },
+  { r: 0.96, inc: -1.1, node: 0.9, speed: -0.16, phase: 3.3, kind: "scope", color: "167,139,250" },
   { r: 1.2, inc: 0.6, node: -1.8, speed: 0.08, phase: 5.2, kind: "relay", color: "244,114,182" },
 ];
 
@@ -879,7 +888,7 @@ function buildGlobe(max: number, compact: boolean): Model {
     const b = latLon(c.lat, c.lon);
     for (let i = 0; i <= 34; i++) {
       const p = arcPoint(home, b, i / 34);
-      pts.push(pt(p.x, p.y, p.z, { tone: 6, alpha: 0.85, size: 1.25, tag: 1 }));
+      pts.push(pt(p.x, p.y, p.z, { tone: 6, alpha: 0.6, size: 0.8, tag: 1 }));
     }
   });
   for (let i = 0; i < 50; i++) {
@@ -1044,6 +1053,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
     // Drag-to-rotate for the globe (desktop, where the graphics panel is exposed). After the visitor
     // lets go and stays idle for a moment, the globe eases back to its home orientation.
     const globeDrag = { active: false, x0: 0, y0: 0, yaw0: 0, pitch0: 0, yaw: 0, pitch: 0, vyaw: 0, lastX: 0, lastMoveAt: 0, releasedAt: -1e9 };
+    const lastTap = { sat: -1, at: 0 };
     const canDragGlobe = () => sceneRef.current.kind === "globe" && !compact && !still;
 
     const onMove = (e: PointerEvent) => {
@@ -1079,6 +1089,19 @@ function ParticleStage({ scene }: { scene: Scene }) {
       const x = e.clientX - r.left;
       const y = e.clientY - r.top;
       if (still || x < 0 || y < 0 || x > r.width || y > r.height) return;
+      // Double-click / double-tap on a satellite destroys it (globe scene only).
+      if (sceneRef.current.kind === "globe" && e.target === over) {
+        const now = performance.now();
+        const hit = satHit.findIndex((h) => h.ok && Math.hypot(h.x - x, h.y - y) < h.r);
+        if (hit >= 0 && hit === lastTap.sat && now - lastTap.at < 400) {
+          destroyQueue.push(hit);
+          lastTap.sat = -1;
+          e.preventDefault();
+          return;
+        }
+        lastTap.sat = hit;
+        lastTap.at = now;
+      }
       if (canDragGlobe() && e.target === over) {
         e.preventDefault(); // no text selection while dragging
         Object.assign(globeDrag, {
@@ -1506,10 +1529,94 @@ function ParticleStage({ scene }: { scene: Scene }) {
       });
     };
 
+    /* ─── Satellite game: double-click a satellite to destroy it; a rocket lifts off from the far side to replace it ─── */
+    type V3 = { x: number; y: number; z: number };
+    type Launch = { sat: number; t0: number; pad: V3; c1: V3; c2: V3; end: V3; dir: V3 };
+    const pads = LAUNCH_PADS.map(([la, lo]) => latLon(la, lo));
+    const launches: Launch[] = [];
+    const explosions: { x: number; y: number; z: number; t0: number; color: string; seed: number }[] = [];
+    const destroyQueue: number[] = []; // filled by the double-click handler, handled in the next globe frame
+    const satHit = SATELLITES.map(() => ({ x: 0, y: 0, r: 0, ok: false })); // last drawn screen position, for hit-testing
+    const phaseOff = SATELLITES.map(() => 0); // shifts a satellite along its orbit after a re-launch
+    let lastGlobeT = -99;
+    const aim = { on: false, x: 0, y: 0, t: 0, lock: -1, lastFire: 0, flash: -9, fx: 0, fy: 0 }; // hand-gesture crosshair
+    const smoke: { x: number; y: number; z: number; t0: number }[] = [];
+    const W3: V3 = { x: 0, y: 0, z: 0 };
+    const B3: V3 = { x: 0, y: 0, z: 0 };
+    /** Satellite position on its tilted orbit, in globe space. */
+    const orbitXYZ = (o: (typeof SATELLITES)[number], th: number, out: V3) => {
+      const x0 = Math.cos(th) * o.r, z0 = Math.sin(th) * o.r;
+      const y1 = -z0 * Math.sin(o.inc), z1 = z0 * Math.cos(o.inc);
+      const cn = Math.cos(o.node), sn = Math.sin(o.node);
+      out.x = x0 * cn + z1 * sn;
+      out.y = y1;
+      out.z = -x0 * sn + z1 * cn;
+    };
+    const norm = (a: V3, r: number): V3 => {
+      const l = Math.hypot(a.x, a.y, a.z) || 1;
+      return { x: (a.x / l) * r, y: (a.y / l) * r, z: (a.z / l) * r };
+    };
+    /** Ascent curve: straight up off the pad, then pitching over into the orbit point. */
+    const bez = (L: Launch, u: number, out: V3) => {
+      const a = 1 - u;
+      const k0 = a * a * a, k1 = 3 * a * a * u, k2 = 3 * a * u * u, k3 = u * u * u;
+      out.x = k0 * L.pad.x + k1 * L.c1.x + k2 * L.c2.x + k3 * L.end.x;
+      out.y = k0 * L.pad.y + k1 * L.c1.y + k2 * L.c2.y + k3 * L.end.y;
+      out.z = k0 * L.pad.z + k1 * L.c1.z + k2 * L.c2.z + k3 * L.end.z;
+    };
+    /** Rocket glyph, nose towards -y (~22 px long). */
+    const drawRocket = (flame: number) => {
+      if (flame > 0) {
+        const glow = octx.createRadialGradient(0, 8, 0, 0, 8, 10);
+        glow.addColorStop(0, `rgba(251,191,36,${0.45 * flame})`);
+        glow.addColorStop(1, "rgba(251,191,36,0)");
+        octx.fillStyle = glow;
+        octx.beginPath();
+        octx.arc(0, 8, 10, 0, Math.PI * 2);
+        octx.fill();
+        const fl = (6 + Math.random() * 3) * flame;
+        octx.fillStyle = "rgba(251,146,60,0.85)";
+        octx.beginPath();
+        octx.moveTo(-2.2, 6);
+        octx.quadraticCurveTo(0, 6 + fl * 1.6, 2.2, 6);
+        octx.fill();
+        octx.fillStyle = "rgba(254,240,138,0.95)";
+        octx.beginPath();
+        octx.moveTo(-1.2, 6);
+        octx.quadraticCurveTo(0, 6 + fl * 0.9, 1.2, 6);
+        octx.fill();
+      }
+      octx.lineWidth = 0.7;
+      octx.strokeStyle = "rgba(15,23,42,0.6)";
+      octx.fillStyle = "#a78bfa"; // fins
+      octx.beginPath();
+      octx.moveTo(-2, 2);
+      octx.lineTo(-4.6, 7);
+      octx.lineTo(-2, 6);
+      octx.moveTo(2, 2);
+      octx.lineTo(4.6, 7);
+      octx.lineTo(2, 6);
+      octx.fill();
+      octx.fillStyle = "#e0f2fe"; // body
+      octx.fillRect(-2, -6, 4, 12);
+      octx.fillStyle = "#22d3ee"; // nose cone + stripe
+      octx.beginPath();
+      octx.moveTo(-2, -6);
+      octx.lineTo(0, -11);
+      octx.lineTo(2, -6);
+      octx.closePath();
+      octx.fill();
+      octx.fillRect(-2, 1.5, 4, 1.2);
+      octx.fillStyle = "#0b1020"; // window
+      octx.beginPath();
+      octx.arc(0, -2.5, 1, 0, Math.PI * 2);
+      octx.fill();
+    };
+
     /**
      * Satellite glyphs in local space (x = across the orbit, y = along it; ~±14 px), each design distinct:
-     * panel (classic twin wings), station (truss + four wings), cube (CubeSat + whip antenna),
-     * dish (comms dish), probe (round body + boom + magnetometer), relay (long single-axis array).
+     * panel (classic twin wings), station (truss + four wings), weather (gold-foil bus + one-sided array + solar sail),
+     * dish (comms dish), scope (space telescope with side arrays), relay (long single-axis array).
      */
     const drawSatellite = (kind: SatKind, rgb: string, blink: boolean, phase: number) => {
       const body = "#e0f2fe";
@@ -1559,60 +1666,134 @@ function ParticleStage({ scene }: { scene: Scene }) {
           octx.fillRect(-1.5, -5, 3, 10);
           light(0, -6.5, "rgba(74,222,128,0.95)");
           break;
-        case "cube":
-          octx.fillStyle = panelFill;
-          octx.fillRect(-3.5, -3.5, 7, 7);
-          octx.strokeRect(-3.5, -3.5, 7, 7);
+        case "weather": {
+          // Geostationary weather satellite: gold-foil box, one long solar array on a yoke,
+          // a conical solar sail on a boom opposite it, imager aperture and an S-band dish.
+          octx.strokeStyle = line;
           octx.beginPath();
-          octx.moveTo(-3.5, 0);
-          octx.lineTo(3.5, 0);
-          octx.moveTo(0, -3.5);
-          octx.lineTo(0, 3.5);
-          octx.moveTo(3.5, -3.5);
-          octx.lineTo(9, -9);
+          octx.moveTo(4, 0);
+          octx.lineTo(7.5, 0); // yoke
+          octx.moveTo(-4, 0);
+          octx.lineTo(-10, 0); // sail boom
           octx.stroke();
-          light(9, -9, `rgba(${rgb},1)`);
-          break;
-        case "dish": {
-          octx.fillStyle = body;
-          octx.fillRect(-3, -2, 6, 6);
-          wing(-10, -1, 6, 4);
-          // dish: tilted arc that slowly scans
-          octx.save();
-          octx.translate(0, -2);
-          octx.rotate(Math.sin(phase * 0.8) * 0.5);
-          octx.fillStyle = panelFill;
+          octx.fillStyle = panelFill; // solar array: 3 panels with cell lines
+          octx.fillRect(7.5, -3.2, 12, 6.4);
+          octx.strokeRect(7.5, -3.2, 12, 6.4);
           octx.beginPath();
-          octx.ellipse(0, -4, 6, 2.6, 0, Math.PI, Math.PI * 2);
+          for (let cx = 11.5; cx < 19.4; cx += 4) {
+            octx.moveTo(cx, -3.2);
+            octx.lineTo(cx, 3.2);
+          }
+          octx.moveTo(7.5, 0);
+          octx.lineTo(19.5, 0);
+          octx.stroke();
+          octx.fillStyle = "rgba(226,232,240,0.85)"; // solar sail cone
+          octx.beginPath();
+          octx.moveTo(-10, 0);
+          octx.lineTo(-14.5, -3.6);
+          octx.lineTo(-14.5, 3.6);
           octx.closePath();
           octx.fill();
           octx.stroke();
+          const foil = octx.createLinearGradient(-4, -4, 4, 4);
+          foil.addColorStop(0, "#fde68a");
+          foil.addColorStop(0.5, "#d4a017");
+          foil.addColorStop(1, "#92610a");
+          octx.fillStyle = foil; // bus
+          octx.fillRect(-4, -4.5, 8, 9);
+          octx.strokeRect(-4, -4.5, 8, 9);
+          octx.fillStyle = "#0b1020"; // imager aperture
+          octx.fillRect(-2.2, 1, 4.4, 2.4);
+          octx.fillStyle = body; // S-band dish (bowl faces outward)
           octx.beginPath();
-          octx.moveTo(0, -4);
-          octx.lineTo(0, -8);
+          octx.ellipse(0, -7, 2.8, 1.3, 0, 0, Math.PI);
+          octx.closePath();
+          octx.fill();
+          octx.beginPath();
+          octx.moveTo(0, -5.7);
+          octx.lineTo(0, -4.5);
           octx.stroke();
+          light(-2.8, -3.4, `rgba(${rgb},1)`);
+          break;
+        }
+        case "scope": {
+          // Space telescope: long silver tube with an open aperture door, aft equipment section,
+          // and two tall solar arrays on arms parallel to the tube.
+          const tube = octx.createLinearGradient(-3.4, 0, 3.4, 0);
+          tube.addColorStop(0, "#94a3b8");
+          tube.addColorStop(0.45, "#f1f5f9");
+          tube.addColorStop(1, "#64748b");
+          octx.strokeStyle = line;
+          octx.beginPath(); // array arms
+          octx.moveTo(-3.4, -1);
+          octx.lineTo(-6, -1);
+          octx.moveTo(3.4, -1);
+          octx.lineTo(6, -1);
+          octx.stroke();
+          for (const sx of [-10, 6]) {
+            octx.fillStyle = panelFill;
+            octx.fillRect(sx, -8, 4, 14);
+            octx.strokeRect(sx, -8, 4, 14);
+            octx.beginPath();
+            for (let cy = -8 + 14 / 4; cy < 5.9; cy += 14 / 4) {
+              octx.moveTo(sx, cy);
+              octx.lineTo(sx + 4, cy);
+            }
+            octx.stroke();
+          }
+          octx.fillStyle = tube; // forward tube
+          octx.fillRect(-3, -12, 6, 14);
+          octx.strokeRect(-3, -12, 6, 14);
+          octx.fillStyle = "#94a3b8"; // aft equipment section (wider)
+          octx.fillRect(-3.6, 2, 7.2, 6.5);
+          octx.strokeRect(-3.6, 2, 7.2, 6.5);
+          octx.fillStyle = "#0b1020"; // aperture
+          octx.fillRect(-2.4, -12.6, 4.8, 1.2);
+          octx.strokeStyle = body; // aperture door, hinged open
+          octx.lineWidth = 1.4;
+          octx.beginPath();
+          octx.moveTo(-3, -12.4);
+          octx.lineTo(0.8, -16);
+          octx.stroke();
+          octx.lineWidth = 0.8;
+          octx.strokeStyle = line;
+          light(0, 9.8, `rgba(${rgb},1)`);
+          break;
+        }
+        case "dish": {
+          // Comms satellite: bus + one array; the dish is a bowl opening outward with a feed on struts, slowly scanning.
+          octx.fillStyle = body;
+          octx.fillRect(-3, -2, 6, 6);
+          wing(-10, -1, 6, 4);
+          octx.save();
+          octx.translate(0, -2);
+          octx.rotate(Math.sin(phase * 0.8) * 0.5);
+          octx.strokeStyle = line;
+          octx.beginPath(); // support post
+          octx.moveTo(0, 0);
+          octx.lineTo(0, -2.6);
+          octx.stroke();
+          octx.fillStyle = panelFill;
+          octx.beginPath();
+          octx.ellipse(0, -6, 6.5, 3.4, 0, 0, Math.PI); // bowl: curved side towards the bus, rim outward
+          octx.closePath();
+          octx.fill();
+          octx.stroke();
+          octx.fillStyle = "rgba(15,23,42,0.35)"; // inner shading
+          octx.beginPath();
+          octx.ellipse(0, -6, 6.5, 1.1, 0, 0, Math.PI * 2);
+          octx.fill();
+          octx.beginPath(); // feed struts
+          octx.moveTo(-5, -6);
+          octx.lineTo(0, -11);
+          octx.lineTo(5, -6);
+          octx.stroke();
+          octx.fillStyle = body;
+          octx.fillRect(-1, -12, 2, 2); // feed horn
           octx.restore();
           light(4.5, 3);
           break;
         }
-        case "probe":
-          octx.fillStyle = panelFill;
-          octx.beginPath();
-          octx.arc(0, 0, 4, 0, Math.PI * 2);
-          octx.fill();
-          octx.stroke();
-          octx.beginPath();
-          octx.moveTo(0, 4);
-          octx.lineTo(0, 13);
-          octx.moveTo(-3, 0);
-          octx.lineTo(-10, 0);
-          octx.stroke();
-          octx.fillStyle = body;
-          octx.beginPath();
-          octx.arc(0, 13, 1.6, 0, Math.PI * 2);
-          octx.fill();
-          light(-10, 0, `rgba(${rgb},1)`);
-          break;
         case "relay":
           wing(-16, -1.8, 12, 3.6);
           wing(4, -1.8, 12, 3.6);
@@ -1719,12 +1900,68 @@ function ParticleStage({ scene }: { scene: Scene }) {
       // Satellites: tilted orbits with a faint path, a short trail, panels oriented along the motion.
       const orbitPos = (o: (typeof SATELLITES)[number], th: number) => {
         // Circle in the equatorial plane → tilt by inclination (about X) → rotate by node (about Y).
-        const x0 = Math.cos(th) * o.r, z0 = Math.sin(th) * o.r;
-        const y1 = -z0 * Math.sin(o.inc), z1 = z0 * Math.cos(o.inc);
-        const cn = Math.cos(o.node), sn = Math.sin(o.node);
-        project(x0 * cn + z1 * sn, y1, -x0 * sn + z1 * cn, v);
+        orbitXYZ(o, th, W3);
+        project(W3.x, W3.y, W3.z, v);
       };
       const hidden = () => P.d > 0 && Math.hypot(P.x - gx, P.y - gy) < gr; // behind the globe disc
+
+      // Leaving the globe and coming back clears any launch in flight.
+      if (t - lastGlobeT > 0.5) {
+        launches.length = 0;
+        explosions.length = 0;
+        smoke.length = 0;
+        destroyQueue.length = 0;
+      }
+      lastGlobeT = t;
+      for (let i = launches.length - 1; i >= 0; i--) if (t - launches[i].t0 > LAUNCH.end) launches.splice(i, 1);
+      while (destroyQueue.length) {
+        const si = destroyQueue.shift()!;
+        if (launches.some((l) => l.sat === si)) continue;
+        const o = SATELLITES[si];
+        // Explosion where it was
+        const at = { x: 0, y: 0, z: 0 };
+        orbitXYZ(o, o.phase + phaseOff[si] + t * o.speed, at);
+        explosions.push({ ...at, t0: t, color: o.color, seed: Math.random() * 100 });
+        window.dispatchEvent(new CustomEvent(SAT_DESTROYED_EVENT)); // the score counter listens
+        // Deploy point: a random spot on its orbit that is in front of the globe (above, across or below it).
+        const fronts: number[] = [];
+        for (let k = 0; k < 48; k++) {
+          const th = (k / 48) * Math.PI * 2;
+          orbitPos(o, th);
+          if (P.d < -0.05 && !hidden()) fronts.push(th);
+        }
+        const thE = fronts.length ? fronts[(Math.random() * fronts.length) | 0] : o.phase + phaseOff[si] + t * o.speed;
+        phaseOff[si] = thE - o.phase - (t + LAUNCH.deploy) * o.speed;
+        const end = { x: 0, y: 0, z: 0 };
+        orbitXYZ(o, thE, end);
+        const eh = norm(end, 1);
+        // Launch site: on the far side of the globe, as close to the deploy point as possible.
+        let pad = pads[0], bestDot = -2;
+        for (const pd of pads) {
+          project(pd.x, pd.y, pd.z, v);
+          if (P.d < GLOBE_R * 0.25) continue;
+          const d = (pd.x * eh.x + pd.y * eh.y + pd.z * eh.z) / GLOBE_R;
+          if (d > bestDot) {
+            bestDot = d;
+            pad = pd;
+          }
+        }
+        const ahead = { x: 0, y: 0, z: 0 };
+        orbitXYZ(o, thE + Math.sign(o.speed) * 0.05, ahead);
+        const dir = norm({ x: ahead.x - end.x, y: ahead.y - end.y, z: ahead.z - end.z }, 1);
+        const L: Launch = { sat: si, t0: t, pad, c1: norm(pad, GLOBE_R + (o.r - GLOBE_R) * 1.2), c2: norm(pad, 1), end, dir };
+        // Arc over the horizon: raise the mid control point until the path stays clear of the surface.
+        for (let lift = 1.05; lift < 2.4; lift += 0.1) {
+          L.c2 = norm({ x: pad.x + end.x, y: pad.y + end.y, z: pad.z + end.z }, o.r * lift);
+          let minR = Infinity;
+          for (let k = 2; k <= 20; k++) {
+            bez(L, k / 20, B3);
+            minR = Math.min(minR, Math.hypot(B3.x, B3.y, B3.z));
+          }
+          if (minR > GLOBE_R * 1.06) break;
+        }
+        launches.push(L);
+      }
       SATELLITES.forEach((o, si) => {
         // Orbit path
         octx.lineWidth = 0.8;
@@ -1743,9 +1980,24 @@ function ParticleStage({ scene }: { scene: Scene }) {
           py0 = P.y;
           ok0 = ok;
         }
-        const th = o.phase + (still ? 0 : t * o.speed);
+        const th = o.phase + phaseOff[si] + (still ? 0 : t * o.speed);
+        // Destroyed: absent during the ascent, then pops back in at deploy.
+        satHit[si].ok = false;
+        const myL = launches.find((l) => l.sat === si);
+        const le = myL ? t - myL.t0 : 0;
+        let vis = 1;
+        if (myL) {
+          if (le < LAUNCH.deploy) vis = 0;
+          else {
+            const q = Math.min(1, (le - LAUNCH.deploy) / LAUNCH.satIn);
+            vis = 1 + 2.2 * Math.pow(q - 1, 3) + 1.2 * Math.pow(q - 1, 2); // ease-out-back
+          }
+        }
+        if (vis <= 0.01) return;
+        const trailOn = !myL;
         // Trail
         for (let k = 6; k >= 1; k--) {
+          if (!trailOn) break;
           orbitPos(o, th - Math.sign(o.speed) * k * 0.035);
           if (hidden()) continue;
           octx.fillStyle = `rgba(${o.color},${0.35 * (1 - k / 7)})`;
@@ -1758,16 +2010,243 @@ function ParticleStage({ scene }: { scene: Scene }) {
         const ax = P.x, ay = P.y;
         orbitPos(o, th);
         if (hidden()) return;
-        const sx = P.x, sy = P.y, ss = P.s * (compact ? 0.85 : 1) * (P.d > 0 ? 0.85 : 1);
+        const sx = P.x, sy = P.y, ss = P.s * (compact ? 0.85 : 1) * (P.d > 0 ? 0.85 : 1) * SAT_SCALE * vis;
+        octx.globalAlpha = blend * Math.min(1, Math.max(0, vis));
+        satHit[si] = { x: sx, y: sy, r: Math.max(16, 16 * ss), ok: P.d < 0.3 && !myL };
         octx.save();
         octx.translate(sx, sy);
         octx.rotate(Math.atan2(ay - sy, ax - sx) + Math.PI / 2); // panels perpendicular to motion
         octx.scale(ss, ss);
         drawSatellite(o.kind, o.color, Math.sin(t * 3 + si * 2) > 0.55, t + si);
         octx.restore();
+        octx.globalAlpha = blend;
       });
 
-      octx.lineWidth = 1.2;
+      // Rocket: lift-off from the pad, exhaust smoke, deploy the satellite, spent stage tumbles away and fades.
+      // Hand aiming (gesture mode): crosshair follows the index finger, snaps onto a nearby satellite,
+      // and a pinch destroys the locked one.
+      const nowAim = performance.now();
+      if (handAim.active && nowAim - handAim.at < 400 && !still) {
+        const tx = handAim.x * w, ty = handAim.y * h;
+        if (!aim.on) {
+          aim.x = tx;
+          aim.y = ty;
+          aim.on = true;
+          aim.t = nowAim;
+        }
+        // Frame-rate independent easing towards the filtered fingertip (~60 ms time constant).
+        const k = 1 - Math.exp(-Math.min(0.1, (nowAim - aim.t) / 1000) / 0.06);
+        aim.t = nowAim;
+        aim.x += (tx - aim.x) * k;
+        aim.y += (ty - aim.y) * k;
+        // Lock-on: keep the current lock while the aim stays near; otherwise grab the nearest satellite.
+        const lk = aim.lock >= 0 ? satHit[aim.lock] : null;
+        if (!lk || !lk.ok || Math.hypot(lk.x - aim.x, lk.y - aim.y) > 85) {
+          aim.lock = -1;
+          let best = 55;
+          satHit.forEach((hh, i) => {
+            if (!hh.ok || hh.x < 0 || hh.y < 0 || hh.x > w || hh.y > h) return;
+            const d = Math.hypot(hh.x - aim.x, hh.y - aim.y);
+            if (d < best) {
+              best = d;
+              aim.lock = i;
+            }
+          });
+        }
+        if (handAim.fire !== aim.lastFire) {
+          aim.lastFire = handAim.fire;
+          if (aim.lock >= 0) {
+            destroyQueue.push(aim.lock);
+            aim.fx = satHit[aim.lock].x;
+            aim.fy = satHit[aim.lock].y;
+            aim.lock = -1;
+          } else {
+            aim.fx = aim.x;
+            aim.fy = aim.y;
+          }
+          aim.flash = t;
+        }
+        // Free crosshair at the fingertip
+        octx.strokeStyle = aim.lock >= 0 ? "rgba(251,191,36,0.45)" : "rgba(252,211,77,0.9)";
+        octx.lineWidth = 1.2;
+        octx.beginPath();
+        octx.arc(aim.x, aim.y, 9, 0, Math.PI * 2);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          octx.moveTo(aim.x + dx * 5, aim.y + dy * 5);
+          octx.lineTo(aim.x + dx * 13, aim.y + dy * 13);
+        }
+        octx.stroke();
+        octx.fillStyle = "#fde68a";
+        octx.beginPath();
+        octx.arc(aim.x, aim.y, 1.8, 0, Math.PI * 2);
+        octx.fill();
+        // Lock brackets around the target, tightening and slowly turning
+        if (aim.lock >= 0) {
+          const hh = satHit[aim.lock];
+          const R = hh.r + 6 + Math.sin(t * 6) * 1.5;
+          octx.save();
+          octx.translate(hh.x, hh.y);
+          octx.rotate(t * 0.8);
+          octx.strokeStyle = "rgba(248,113,113,0.95)";
+          octx.lineWidth = 1.6;
+          octx.beginPath();
+          for (let q = 0; q < 4; q++) {
+            const a0 = q * (Math.PI / 2) - 0.35;
+            octx.moveTo(Math.cos(a0) * R, Math.sin(a0) * R);
+            octx.arc(0, 0, R, a0, a0 + 0.7);
+          }
+          octx.stroke();
+          octx.restore();
+          octx.strokeStyle = "rgba(248,113,113,0.35)";
+          octx.lineWidth = 1;
+          octx.setLineDash([2, 3]);
+          octx.beginPath();
+          octx.moveTo(aim.x, aim.y);
+          octx.lineTo(hh.x, hh.y);
+          octx.stroke();
+          octx.setLineDash([]);
+          label("LOCKED · pinch", hh.x + R + 4, hh.y - R + 2, 9, "rgba(254,202,202,0.95)", 600, "left");
+        }
+      } else {
+        aim.on = false;
+        aim.lock = -1;
+        aim.lastFire = handAim.fire; // pinches made while not aiming never fire later
+      }
+      // Pinch feedback: a quick ring where the shot went
+      if (t - aim.flash < 0.4) {
+        const q = (t - aim.flash) / 0.4;
+        octx.strokeStyle = `rgba(253,224,71,${0.9 * (1 - q)})`;
+        octx.lineWidth = 1.5;
+        octx.beginPath();
+        octx.arc(aim.fx, aim.fy, 6 + q * 18, 0, Math.PI * 2);
+        octx.stroke();
+      }
+
+      // Exhaust smoke (in globe space, so it turns with the globe)
+      for (let i = smoke.length - 1; i >= 0; i--) {
+        const a = t - smoke[i].t0;
+        if (a > 2.4) {
+          smoke.splice(i, 1);
+          continue;
+        }
+        project(smoke[i].x, smoke[i].y, smoke[i].z, v);
+        if (hidden()) continue;
+        octx.fillStyle = `rgba(203,213,225,${0.4 * (1 - a / 2.4)})`;
+        octx.beginPath();
+        octx.arc(P.x, P.y, (1.2 + a * 4.5) * P.s, 0, Math.PI * 2);
+        octx.fill();
+      }
+      // Explosions: flash, shock ring and tumbling debris where a satellite was destroyed.
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        const ex = explosions[i];
+        const a = t - ex.t0;
+        if (a > 1.6) {
+          explosions.splice(i, 1);
+          continue;
+        }
+        project(ex.x, ex.y, ex.z, v);
+        if (hidden()) continue;
+        const k = P.s * (compact ? 0.85 : 1);
+        if (a < 0.35) {
+          const f = 1 - a / 0.35;
+          const g = octx.createRadialGradient(P.x, P.y, 0, P.x, P.y, 26 * k);
+          g.addColorStop(0, `rgba(255,251,235,${0.95 * f})`);
+          g.addColorStop(0.35, `rgba(251,146,60,${0.7 * f})`);
+          g.addColorStop(1, "rgba(251,146,60,0)");
+          octx.fillStyle = g;
+          octx.beginPath();
+          octx.arc(P.x, P.y, 26 * k, 0, Math.PI * 2);
+          octx.fill();
+        }
+        octx.strokeStyle = `rgba(253,186,116,${0.7 * Math.max(0, 1 - a / 0.8)})`;
+        octx.lineWidth = 1.2;
+        octx.beginPath();
+        octx.arc(P.x, P.y, (6 + a * 46) * k, 0, Math.PI * 2);
+        octx.stroke();
+        const fade = Math.max(0, 1 - a / 1.6);
+        for (let j = 0; j < 14; j++) {
+          const ang = j * 2.399 + ex.seed;
+          const sp = (18 + ((j * 37 + ex.seed * 13) % 23)) * k;
+          const dx = Math.cos(ang) * sp * (1 - Math.exp(-a * 2.2)) * 1.6;
+          const dy = Math.sin(ang) * sp * (1 - Math.exp(-a * 2.2)) * 1.6;
+          octx.save();
+          octx.translate(P.x + dx, P.y + dy);
+          octx.rotate(a * (3 + (j % 4)) + j);
+          octx.fillStyle = j % 3 === 0 ? `rgba(${ex.color},${fade})` : j % 3 === 1 ? `rgba(226,232,240,${fade})` : `rgba(251,191,36,${fade})`;
+          const sz = (1.2 + (j % 3)) * k;
+          octx.fillRect(-sz, -sz * 0.6, sz * 2, sz * 1.2);
+          octx.restore();
+        }
+      }
+      for (const L of launches) {
+        const o = SATELLITES[L.sat];
+        const le = t - L.t0;
+        // Pad beacon while the rocket stands on it
+        if (le < LAUNCH.liftoff + 0.6) {
+          project(L.pad.x, L.pad.y, L.pad.z, v);
+          if (!hidden()) {
+            const pulse = 0.5 + 0.5 * Math.sin(le * 12);
+            octx.strokeStyle = `rgba(251,191,36,${0.6 * pulse})`;
+            octx.lineWidth = 1;
+            octx.beginPath();
+            octx.arc(P.x, P.y, (5 + pulse * 3) * P.s, 0, Math.PI * 2);
+            octx.stroke();
+          }
+        }
+        if (le >= LAUNCH.ignite) {
+          const asc = Math.max(0, Math.min(1, (le - LAUNCH.liftoff) / (LAUNCH.deploy - LAUNCH.liftoff)));
+          const u = asc * asc * 0.55 + asc * 0.45; // accelerating climb
+          const spent = Math.max(0, le - LAUNCH.deploy);
+          const alpha = spent > 0 ? Math.max(0, 1 - spent / 1.4) : Math.min(1, (le - LAUNCH.ignite) / 0.3);
+          if (alpha > 0) {
+            if (spent > 0) {
+              const drift = spent * 0.3;
+              B3.x = L.end.x + L.dir.x * drift - L.end.x * drift * 0.35;
+              B3.y = L.end.y + L.dir.y * drift - L.end.y * drift * 0.35;
+              B3.z = L.end.z + L.dir.z * drift - L.end.z * drift * 0.35;
+            } else bez(L, u, B3);
+            const bx = B3.x, by = B3.y, bz = B3.z;
+            if (spent === 0 && le > LAUNCH.liftoff - 0.2 && Math.random() < 0.8) smoke.push({ x: bx, y: by, z: bz, t0: t });
+            if (smoke.length > 90) smoke.shift();
+            // Heading: along the curve (or the orbit, once spent)
+            project(bx, by, bz, v);
+            const rx = P.x, ry = P.y, rs = P.s;
+            const hid = hidden();
+            if (spent > 0) project(bx + L.dir.x * 0.05, by + L.dir.y * 0.05, bz + L.dir.z * 0.05, v);
+            else {
+              bez(L, Math.min(1, u + 0.02), W3);
+              if (u >= 0.98) project(bx + L.dir.x * 0.05, by + L.dir.y * 0.05, bz + L.dir.z * 0.05, v);
+              else project(W3.x, W3.y, W3.z, v);
+            }
+            const hx = P.x - rx, hy = P.y - ry;
+            if (!hid) {
+              octx.save();
+              octx.globalAlpha = blend * alpha;
+              octx.translate(rx, ry);
+              octx.rotate(Math.atan2(hy, hx) + Math.PI / 2 + spent * 2.2);
+              const sc = rs * (compact ? 0.85 : 1) * 1.75 * (1 - spent * 0.3);
+              octx.scale(sc, sc);
+              drawRocket(spent > 0 ? 0 : le < LAUNCH.liftoff ? 0.5 : 1);
+              octx.restore();
+              octx.globalAlpha = blend;
+            }
+          }
+        }
+        // Deploy flash: an expanding ring where the satellite is released
+        if (le >= LAUNCH.deploy && le < LAUNCH.deploy + 1.2) {
+          const q = (le - LAUNCH.deploy) / 1.2;
+          orbitPos(o, o.phase + phaseOff[L.sat] + t * o.speed);
+          if (!hidden()) {
+            octx.strokeStyle = `rgba(${o.color},${0.8 * (1 - q)})`;
+            octx.lineWidth = 1.4;
+            octx.beginPath();
+            octx.arc(P.x, P.y, (6 + q * 22) * P.s, 0, Math.PI * 2);
+            octx.stroke();
+          }
+        }
+      }
+
+      octx.lineWidth = 0.6;
       CITIES.forEach((c, ci) => {
         const b = latLon(c.lat, c.lon);
         let prevX = 0, prevY = 0;
@@ -1775,7 +2254,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
           const p = arcPoint(home, b, i / 28);
           project(p.x, p.y, p.z, v);
           if (i > 0) {
-            const a = Math.max(0, Math.min(0.7, 0.45 - P.d * 0.6));
+            const a = Math.max(0, Math.min(0.55, 0.36 - P.d * 0.5));
             octx.strokeStyle = `rgba(167,139,250,${a})`;
             octx.beginPath();
             octx.moveTo(prevX, prevY);
@@ -1791,7 +2270,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
         if (P.d < 0.4) {
           octx.fillStyle = "rgba(186,230,253,0.95)";
           octx.beginPath();
-          octx.arc(P.x, P.y, 2.4, 0, Math.PI * 2);
+          octx.arc(P.x, P.y, 1.3, 0, Math.PI * 2);
           octx.fill();
         }
         project(b.x, b.y, b.z, v);
@@ -1831,6 +2310,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
       if (!still) t += dt / 60;
 
       const s = sceneRef.current;
+      const calm = s.kind === "globe" ? 0.1 : 1; // the globe reacts only 10% as much to the pointer
       const k = sceneKey(s);
       if (k !== key) {
         key = k;
@@ -1849,7 +2329,8 @@ function ParticleStage({ scene }: { scene: Scene }) {
           globeDrag.pitch += (0 - globeDrag.pitch) * k;
         }
       }
-      const cursor = canDragGlobe() ? (globeDrag.active ? "grabbing" : "grab") : "";
+      const overSat = sceneRef.current.kind === "globe" && mouse.inside && satHit.some((hh) => hh.ok && Math.hypot(hh.x - mouse.x, hh.y - mouse.y) < hh.r);
+      const cursor = overSat && !globeDrag.active ? "crosshair" : canDragGlobe() ? (globeDrag.active ? "grabbing" : "grab") : "";
       if (over.style.cursor !== cursor) over.style.cursor = cursor;
 
       mouse.nx += (mouse.tx - mouse.nx) * 0.05 * dt;
@@ -1913,8 +2394,8 @@ function ParticleStage({ scene }: { scene: Scene }) {
             if (d2 < R2 && d2 > 0.01) {
               const d = Math.sqrt(d2);
               const f = 1 - d / 110;
-              vx[i] += ((dx / d) * 2.6 - (dy / d) * 1.2) * f * dt;
-              vy[i] += ((dy / d) * 2.6 + (dx / d) * 1.2) * f * dt;
+              vx[i] += ((dx / d) * 2.6 - (dy / d) * 1.2) * f * dt * calm;
+              vy[i] += ((dy / d) * 2.6 + (dx / d) * 1.2) * f * dt * calm;
             }
           }
           for (let r = 0; r < ripples.length; r++) {
@@ -1925,7 +2406,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
             const d = Math.sqrt(dx * dx + dy * dy) || 1;
             const band = Math.abs(d - age * 420);
             if (band < 28) {
-              const f = (1 - band / 28) * (1 - age / 1.1) * 2 * rp.k;
+              const f = (1 - band / 28) * (1 - age / 1.1) * 2 * rp.k * calm;
               vx[i] += (dx / d) * f * dt;
               vy[i] += (dy / d) * f * dt;
             }
@@ -2013,7 +2494,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
       octx.globalAlpha = 1;
       for (const rp of ripples) {
         const age = Math.max(0, (nowMs - rp.t0) / 1000); // pointer events can land after the frame timestamp
-        octx.strokeStyle = `rgba(125,211,252,${Math.max(0, (1 - age / 1.1) * 0.35 * rp.k)})`;
+        octx.strokeStyle = `rgba(125,211,252,${Math.max(0, (1 - age / 1.1) * 0.35 * rp.k * calm)})`;
         octx.lineWidth = 1;
         octx.beginPath();
         octx.arc(rp.x, rp.y, age * 420, 0, Math.PI * 2);
@@ -2290,7 +2771,7 @@ export default function Home() {
             <NebulaSmoke vivid={index === 0} />
             <ParticleStage scene={scene} />
             <div aria-hidden className="pointer-events-none absolute inset-y-[12%] left-0 hidden w-px bg-gradient-to-b from-transparent via-primary/30 to-transparent lg:block" />
-            <SceneCaption scene={scene} />
+            <SceneCaption scene={scene} gestures={gesturesOn} />
           </motion.div>
           {/* Keep left text readable over the backdrop on small screens */}
           <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-bg/20 via-bg/60 to-bg/85 lg:hidden" />
@@ -2340,7 +2821,14 @@ export default function Home() {
         </div>
 
         <ProgressDots active={index} progress={progress} onNavigate={goTo} pulse={gestureFlash} />
-        <HandGestures enabled={gesturesOn} onEnabledChange={setGesturesOn} onFingers={onFingers} onStep={onStep} confirm={gestureFlash} />
+        <HandGestures
+          enabled={gesturesOn}
+          onEnabledChange={setGesturesOn}
+          onFingers={onFingers}
+          onStep={onStep}
+          confirm={gestureFlash}
+          aimMode={scene.kind === "globe"}
+        />
         <StageCounter active={index} />
       </div>
       <GestureIntroModal open={gestureIntro} onAccept={acceptGestures} onSkip={skipGestures} />
@@ -2375,6 +2863,36 @@ const THUMB_REPEAT_MS = 950; // …then it repeats at this pace while held
 // Gesture tokens: 1–5 finger counts, plus the two thumb gestures.
 const TOKEN_THUMB_UP = 101; // back / scroll up
 const TOKEN_THUMB_DOWN = 102; // next / scroll down
+const TOKEN_AIM = 103; // target mode: index finger aims at satellites, pinch fires
+const TOKEN_FIST = 104; // globe screens: hold a fist to switch target mode on / off
+const FIST_HOLD_MS = 500;
+
+/**
+ * Hand aiming, shared between the gesture tracker (writer) and the globe renderer (reader) without
+ * React re-renders. x / y are 0–1 across the globe panel; `fire` counts pinches.
+ */
+const handAim = { active: false, x: 0.5, y: 0.5, fire: 0, at: 0 };
+const AIM_DETECT_INTERVAL_MS = 33; // ~30 detections per second while aiming
+
+/** One Euro filter: smooths jitter when the hand is still, stays responsive when it moves fast. */
+function makeOneEuro(minCutoff = 1.4, beta = 0.9, dCutoff = 1) {
+  let x = NaN, dx = 0, last = 0;
+  const alpha = (cutoff: number, dt: number) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+  return {
+    reset() { x = NaN; },
+    next(v: number, now: number) {
+      if (Number.isNaN(x)) { x = v; last = now; dx = 0; return v; }
+      const dt = Math.max(1e-3, (now - last) / 1000);
+      last = now;
+      const ad = alpha(dCutoff, dt);
+      dx = ad * ((v - x) / dt) + (1 - ad) * dx;
+      const a = alpha(minCutoff + beta * Math.abs(dx), dt);
+      x = a * v + (1 - a) * x;
+      return x;
+    },
+  };
+}
+const AIM_BOX = { x0: 0.17, x1: 0.83, y0: 0.13, y1: 0.77 }; // part of the camera frame mapped onto the panel
 
 type Landmark = { x: number; y: number; z: number };
 type HandLandmarkerLike = { detectForVideo(v: HTMLVideoElement, ts: number): { landmarks: Landmark[][] }; close(): void };
@@ -2453,7 +2971,10 @@ function HandGestures({
   onFingers,
   onStep,
   confirm,
+  aimMode = false,
 }: {
+  /** Globe screens: one finger aims at satellites and a pinch destroys the locked one. */
+  aimMode?: boolean;
   enabled: boolean;
   onEnabledChange: (on: boolean) => void;
   onFingers: (n: number) => void;
@@ -2465,13 +2986,16 @@ function HandGestures({
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState<GestureStatus>("off");
+  const [targetMode, setTargetMode] = useState(false);
   const [live, setLive] = useState({ fingers: 0, hold: 0, fired: 0, seen: false, up: [false, false, false, false, false] });
   const onFingersRef = useRef(onFingers);
   const onStepRef = useRef(onStep);
+  const aimModeRef = useRef(aimMode);
   useEffect(() => {
     onFingersRef.current = onFingers;
     onStepRef.current = onStep;
-  }, [onFingers, onStep]);
+    aimModeRef.current = aimMode;
+  }, [onFingers, onStep, aimMode]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -2486,6 +3010,12 @@ function HandGestures({
     let fired = 0;
     let emptySince = 0;
     let lastStep = 0;
+    let pinched = false;
+    let targetOn = false; // target mode: page gestures paused, index aims, pinch fires
+    let lastLiveKey = "";
+    const fx = makeOneEuro();
+    const fy = makeOneEuro();
+    let fistArmed = true; // a fist toggles once; it must be released before it can toggle again
 
     const start = async () => {
       setStatus("loading");
@@ -2516,10 +3046,53 @@ function HandGestures({
               const thumb = thumbDirection(hand, up, aspect);
               const count = up.filter(Boolean).length;
               n = thumb ? (thumb === "down" ? TOKEN_THUMB_DOWN : TOKEN_THUMB_UP) : up[0] && count === 1 ? -1 : count;
+              if (!aimModeRef.current && targetOn) {
+                targetOn = false; // left the globe screens
+                setTargetMode(false);
+              }
+              // Fist (globe screens only): held, it switches target mode on / off.
+              if (aimModeRef.current && count === 0 && !thumb) n = TOKEN_FIST;
+              // Target mode: index out (or pinching) with the other three fingers folded aims; anything else is ignored.
+              const size = Math.hypot((hand[0].x - hand[9].x) * aspect, hand[0].y - hand[9].y) || 1e-3;
+              const gap = Math.hypot((hand[4].x - hand[8].x) * aspect, hand[4].y - hand[8].y) / size;
+              const folded = !up[2] && !up[3] && !up[4];
+              // The index must reach out past its knuckle (a fist curls it back and must not count as a pinch).
+              const reach = Math.hypot((hand[8].x - hand[0].x) * aspect, hand[8].y - hand[0].y) > Math.hypot((hand[5].x - hand[0].x) * aspect, hand[5].y - hand[0].y) * 1.05;
+              if (targetOn && n !== TOKEN_FIST && folded && !thumb && reach && (up[1] || gap < 0.45)) {
+                n = TOKEN_AIM;
+                // Pinch with hysteresis; each new pinch fires once.
+                if (!pinched && gap < 0.3) {
+                  pinched = true;
+                  handAim.fire++;
+                } else if (pinched && gap > 0.5) pinched = false;
+                // Aim with the index tip (mirrored, like a mirror), filtered. Hold the point only while a pinch is
+                // actually closing / closed, so a thumb resting near the index never freezes the crosshair.
+                if (!pinched && gap > 0.38) {
+                  const rx = (1 - hand[8].x - AIM_BOX.x0) / (AIM_BOX.x1 - AIM_BOX.x0);
+                  const ry = (hand[8].y - AIM_BOX.y0) / (AIM_BOX.y1 - AIM_BOX.y0);
+                  handAim.x = Math.min(1, Math.max(0, fx.next(rx, now)));
+                  handAim.y = Math.min(1, Math.max(0, fy.next(ry, now)));
+                }
+                handAim.active = true;
+                handAim.at = now;
+              } else {
+                // Keep the last aim alive briefly (the globe keeps showing it for a moment) — one misread frame
+                // must not reset the crosshair.
+                if (now - handAim.at > 300) {
+                  handAim.active = false;
+                  fx.reset();
+                  fy.reset();
+                }
+                pinched = false;
+                if (targetOn && n !== TOKEN_FIST) n = -1; // page gestures are paused in target mode
+              }
             }
           }
+          if (!hand && now - handAim.at > 300) handAim.active = false;
+          if (!targetOn) handAim.active = false;
           drawHand(hand);
 
+          if (n !== TOKEN_FIST) fistArmed = true;
           if (n <= 0) {
             if (!emptySince) emptySince = now;
             if (now - emptySince > 300) fired = 0; // hand gone: allow the same gesture to fire again
@@ -2531,7 +3104,17 @@ function HandGestures({
               since = now;
               lastStep = 0; // a fresh gesture steps as soon as it's held; the repeat delay is only for a continued hold
             }
-            if (n >= 100) {
+            if (n === TOKEN_AIM) {
+              // Aiming is handled by the globe; it never navigates.
+              fired = 0;
+            } else if (n === TOKEN_FIST) {
+              if (fistArmed && now - since >= FIST_HOLD_MS) {
+                fistArmed = false;
+                targetOn = !targetOn;
+                setTargetMode(targetOn);
+                fired = 0;
+              }
+            } else if (n >= 100) {
               // Thumb up/down: step within the page, repeating while held.
               if (now - since >= THUMB_HOLD_MS && now - lastStep >= THUMB_REPEAT_MS) {
                 lastStep = now;
@@ -2543,10 +3126,15 @@ function HandGestures({
               onFingersRef.current(n);
             }
           }
-          const holdMs = candidate >= 100 ? THUMB_HOLD_MS : GESTURE_HOLD_MS;
-          const hold = candidate && candidate !== fired ? Math.min(1, (now - since) / holdMs) : candidate ? 1 : 0;
-          setLive({ fingers: candidate, hold, fired, seen: !!hand, up });
-          timer = window.setTimeout(tick, GESTURE_DETECT_INTERVAL_MS);
+          const holdMs = candidate === TOKEN_FIST ? FIST_HOLD_MS : candidate >= 100 ? THUMB_HOLD_MS : GESTURE_HOLD_MS;
+          const hold = candidate === TOKEN_AIM ? 1 : candidate === TOKEN_FIST ? (fistArmed ? Math.min(1, (now - since) / holdMs) : 1) : candidate && candidate !== fired ? Math.min(1, (now - since) / holdMs) : candidate ? 1 : 0;
+          // Re-render the window only when what it shows changes (tracking runs up to 30×/s while aiming).
+          const liveKey = `${candidate}|${Math.round(hold * 20)}|${fired}|${!!hand}|${up.join("")}`;
+          if (liveKey !== lastLiveKey) {
+            lastLiveKey = liveKey;
+            setLive({ fingers: candidate, hold, fired, seen: !!hand, up });
+          }
+          timer = window.setTimeout(tick, targetOn ? AIM_DETECT_INTERVAL_MS : GESTURE_DETECT_INTERVAL_MS);
         };
         tick();
       } catch (err) {
@@ -2611,6 +3199,8 @@ function HandGestures({
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      handAim.active = false;
+      setTargetMode(false);
       stream?.getTracks().forEach((tr) => tr.stop());
       video.srcObject = null;
       setStatus((st) => (st === "denied" || st === "error" ? st : "off"));
@@ -2620,7 +3210,9 @@ function HandGestures({
 
   const active = enabled && status === "on";
   const target = GESTURE_TARGETS.find((g) => g.fingers === live.fingers);
-  const thumbToken = live.fingers >= 100 ? live.fingers : 0;
+  const aiming = live.fingers === TOKEN_AIM;
+  const fist = live.fingers === TOKEN_FIST;
+  const thumbToken = live.fingers >= 100 && !aiming && !fist ? live.fingers : 0;
   const toggleLabel =
     status === "loading" ? "Starting camera…"
       : active ? "Hand gestures on"
@@ -2637,7 +3229,9 @@ function HandGestures({
         } ${
           confirm
             ? "border-primary/70 shadow-[0_0_28px_-4px_rgb(34_211_238/0.7)]"
-            : active
+            : targetMode
+              ? "border-amber-300/60 shadow-[0_0_24px_-4px_rgb(252_211_77/0.5)]"
+              : active
               ? "border-primary/50 shadow-[0_0_24px_-4px_rgb(34_211_238/0.55)]"
               : "hover:border-primary/30"
         }`}
@@ -2737,7 +3331,9 @@ function HandGestures({
                     </linearGradient>
                   </defs>
                 </svg>
-                {thumbToken === TOKEN_THUMB_UP ? (
+                {aiming || fist || (targetMode && !thumbToken) ? (
+                  <Crosshair className="h-3.5 w-3.5 text-amber-300" aria-hidden />
+                ) : thumbToken === TOKEN_THUMB_UP ? (
                   <ThumbsUp className="h-3.5 w-3.5 text-fg" aria-hidden />
                 ) : thumbToken === TOKEN_THUMB_DOWN ? (
                   <ThumbsDown className="h-3.5 w-3.5 text-fg" aria-hidden />
@@ -2753,6 +3349,21 @@ function HandGestures({
                       {String(confirm.page).padStart(2, "0")} · {confirm.label}
                     </span>
                   </>
+                ) : fist ? (
+                  <>
+                    <span className="block truncate text-amber-200">{live.hold < 1 ? (targetMode ? "Exit target" : "Target mode") : targetMode ? "Target mode on" : "Target mode off"}</span>
+                    <span className="block truncate text-muted">{live.hold < 1 ? "Hold the fist…" : "Open your hand"}</span>
+                  </>
+                ) : aiming ? (
+                  <>
+                    <span className="block truncate text-amber-200">Aiming</span>
+                    <span className="block truncate text-muted">Pinch to destroy</span>
+                  </>
+                ) : targetMode ? (
+                  <>
+                    <span className="block truncate text-amber-200">Target mode</span>
+                    <span className="block truncate text-muted">Point · fist to exit</span>
+                  </>
                 ) : (
                   <>
                     <span className="block truncate text-fg">
@@ -2761,7 +3372,7 @@ function HandGestures({
                     <span className="block truncate text-muted">
                       {thumbToken
                         ? live.fired === live.fingers ? "Hold to repeat" : "Hold steady…"
-                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : "or thumb ↑ / ↓"}
+                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : aimMode ? "fist: target mode" : "or thumb ↑ / ↓"}
                     </span>
                   </>
                 )}
@@ -2922,6 +3533,13 @@ function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept
                   </span>
                 </li>
               </ul>
+              <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.04] px-2.5 py-2">
+                <Crosshair className="h-5 w-5 shrink-0 text-amber-300" aria-hidden />
+                <span className="font-mono text-[10px] leading-tight text-fg-soft">
+                  <span className="block text-fg">On the globe: hold a fist for target mode</span>
+                  Point to aim, pinch to destroy · fist again to exit
+                </span>
+              </div>
 
               <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row">
                 <button
@@ -3351,7 +3969,14 @@ function NebulaSmoke({ vivid }: { vivid: boolean }) {
   );
 }
 
-function SceneCaption({ scene }: { scene: Scene }) {
+function SceneCaption({ scene, gestures = false }: { scene: Scene; gestures?: boolean }) {
+  // Satellites destroyed this visit (by double-click or hand pinch).
+  const [destroyed, setDestroyed] = useState(0);
+  useEffect(() => {
+    const onHit = () => setDestroyed((n) => n + 1);
+    window.addEventListener(SAT_DESTROYED_EVENT, onHit);
+    return () => window.removeEventListener(SAT_DESTROYED_EVENT, onHit);
+  }, []);
   const c =
     scene.kind === "flow"
       ? { k: `flow-${scene.project}`, title: `flow.${FLOWS[scene.project].title}`, text: PROJECTS[scene.project].name }
@@ -3359,7 +3984,64 @@ function SceneCaption({ scene }: { scene: Scene }) {
         ? SCENE_CAPTIONS[scene.variant]
         : SCENE_CAPTIONS[scene.kind];
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-6 hidden justify-center px-4 lg:flex">
+    <>
+    {/* Game hint on the globe screens (desktop only, where the globe can be clicked) */}
+    <div className="pointer-events-none absolute top-5 left-7 hidden flex-col items-start gap-1.5 lg:flex">
+      <AnimatePresence initial={false}>
+        {scene.kind === "globe" && (
+          <motion.div
+            key="sat-hint"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.35, delay: 0.3 }}
+            className="flex items-center gap-2 rounded-full border border-amber-300/25 whitespace-nowrap bg-[rgb(20_14_6/0.55)] px-3 py-1.5 font-mono text-[10.5px] text-amber-100/90 backdrop-blur-md"
+          >
+            <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+              <span className="absolute inset-0 animate-ping rounded-full bg-amber-300/30" />
+              <Crosshair className="relative h-3.5 w-3.5 text-amber-300" aria-hidden />
+            </span>
+            <span className="hidden text-amber-300 2xl:inline">Mini-game</span>
+            {gestures ? (
+              // Hand gestures on: both ways work — double-click, or fist (target mode) → aim → pinch.
+              <span>
+                <span className="xl:hidden">Double-click / pinch</span>
+                <span className="hidden xl:inline 2xl:hidden">Double-click, or fist → aim → pinch</span>
+                <span className="hidden 2xl:inline">Double-click a satellite, or fist → aim → pinch</span>
+              </span>
+            ) : (
+              <span>
+                Double-click a satellite<span className="hidden xl:inline"> to destroy it</span>
+              </span>
+            )}
+          </motion.div>
+        )}
+        {scene.kind === "globe" && destroyed > 0 && (
+          <motion.div
+            key="sat-score"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.3 }}
+            className="flex items-center gap-2 rounded-full border border-red-400/25 bg-[rgb(24_8_10/0.55)] py-1 pr-3 pl-2 font-mono text-[10.5px] text-red-100/85 backdrop-blur-md"
+            aria-live="polite"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-red-400 shadow-[0_0_8px_rgb(248_113_113/0.9)]" />
+            Destroyed
+            <motion.span
+              key={destroyed}
+              initial={{ scale: 1.6, color: "#fca5a5" }}
+              animate={{ scale: 1, color: "#fef2f2" }}
+              transition={{ type: "spring", stiffness: 420, damping: 18 }}
+              className="inline-block min-w-[1.5ch] text-right font-bold tabular-nums"
+            >
+              {String(destroyed).padStart(2, "0")}
+            </motion.span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+    <div className="pointer-events-none absolute inset-x-0 bottom-4 hidden justify-center px-4 lg:flex">
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={c.k}
@@ -3375,6 +4057,7 @@ function SceneCaption({ scene }: { scene: Scene }) {
         </motion.div>
       </AnimatePresence>
     </div>
+    </>
   );
 }
 
