@@ -2098,7 +2098,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
         if (hidden()) return;
         const sx = P.x, sy = P.y, ss = P.s * (compact ? 0.85 : 1) * (P.d > 0 ? 0.85 : 1) * SAT_SCALE * vis;
         octx.globalAlpha = blend * Math.min(1, Math.max(0, vis));
-        satHit[si] = { x: sx, y: sy, r: Math.max(16, 16 * ss), ok: P.d < 0.3 && !myL };
+        satHit[si] = { x: sx, y: sy, r: Math.max(16, 16 * ss), ok: !myL }; // anything drawn (not behind the globe disc) can be targeted
         octx.save();
         octx.translate(sx, sy);
         octx.rotate(Math.atan2(ay - sy, ax - sx) + Math.PI / 2); // panels perpendicular to motion
@@ -2174,7 +2174,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
           octx.translate(hh.x, hh.y);
           octx.rotate(t * 0.8);
           octx.strokeStyle = "rgba(248,113,113,0.95)";
-          octx.lineWidth = 1.6;
+          octx.lineWidth = 2.3;
           octx.beginPath();
           for (let q = 0; q < 4; q++) {
             const a0 = q * (Math.PI / 2) - 0.35;
