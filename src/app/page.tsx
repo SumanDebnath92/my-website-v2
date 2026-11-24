@@ -2743,6 +2743,7 @@ export default function Home() {
 
   // Hand-gesture navigation: invite on load, toggle anytime from the header.
   const [gesturesOn, setGesturesOn] = useState(false);
+  const [targetMode, setTargetMode] = useState(false);
   const [gestureIntro, setGestureIntro] = useState(false);
   useEffect(() => {
     const id = window.setTimeout(() => setGestureIntro(true), 900);
@@ -2857,7 +2858,7 @@ export default function Home() {
             <NebulaSmoke vivid={index === 0} />
             <ParticleStage scene={scene} />
             <div aria-hidden className="pointer-events-none absolute inset-y-[12%] left-0 hidden w-px bg-gradient-to-b from-transparent via-primary/30 to-transparent lg:block" />
-            <SceneCaption scene={scene} gestures={gesturesOn} />
+            <SceneCaption scene={scene} gestures={gesturesOn} targetMode={gesturesOn && targetMode} />
           </motion.div>
           {/* Keep left text readable over the backdrop on small screens */}
           <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-bg/20 via-bg/60 to-bg/85 lg:hidden" />
@@ -2914,6 +2915,7 @@ export default function Home() {
           onStep={onStep}
           confirm={gestureFlash}
           aimMode={scene.kind === "globe"}
+          onTargetModeChange={setTargetMode}
         />
         <StageCounter active={index} />
       </div>
@@ -3058,7 +3060,10 @@ function HandGestures({
   onStep,
   confirm,
   aimMode = false,
+  onTargetModeChange,
 }: {
+  /** Target mode switched on / off (fist hold on the globe screens). */
+  onTargetModeChange?: (on: boolean) => void;
   /** Globe screens: one finger aims at satellites and a pinch destroys the locked one. */
   aimMode?: boolean;
   enabled: boolean;
@@ -3073,6 +3078,13 @@ function HandGestures({
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState<GestureStatus>("off");
   const [targetMode, setTargetMode] = useState(false);
+  const onTargetRef = useRef(onTargetModeChange);
+  useEffect(() => {
+    onTargetRef.current = onTargetModeChange;
+  }, [onTargetModeChange]);
+  useEffect(() => {
+    onTargetRef.current?.(targetMode);
+  }, [targetMode]);
   const [live, setLive] = useState({ fingers: 0, hold: 0, fired: 0, seen: false, up: [false, false, false, false, false] });
   const onFingersRef = useRef(onFingers);
   const onStepRef = useRef(onStep);
@@ -4055,7 +4067,7 @@ function NebulaSmoke({ vivid }: { vivid: boolean }) {
   );
 }
 
-function SceneCaption({ scene, gestures = false }: { scene: Scene; gestures?: boolean }) {
+function SceneCaption({ scene, gestures = false, targetMode = false }: { scene: Scene; gestures?: boolean; targetMode?: boolean }) {
   // Satellites destroyed this visit (by double-click or hand pinch).
   const [destroyed, setDestroyed] = useState(0);
   useEffect(() => {
@@ -4098,6 +4110,35 @@ function SceneCaption({ scene, gestures = false }: { scene: Scene; gestures?: bo
             ) : (
               <span>
                 Double-click a satellite<span className="hidden xl:inline"> to destroy it</span>
+              </span>
+            )}
+          </motion.div>
+        )}
+        {scene.kind === "globe" && gestures && (
+          <motion.div
+            key="sat-fist"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.3 }}
+            className={`flex items-center gap-2 rounded-full border py-1 pr-3 pl-2 font-mono text-[10.5px] whitespace-nowrap backdrop-blur-md transition-colors duration-300 ${
+              targetMode
+                ? "border-amber-300/50 bg-[rgb(40_26_6/0.7)] text-amber-100"
+                : "border-line bg-[rgb(8_12_24/0.55)] text-fg-soft"
+            }`}
+            aria-live="polite"
+          >
+            <Hand className={`h-3.5 w-3.5 ${targetMode ? "text-amber-300" : "text-muted"}`} aria-hidden />
+            {targetMode ? (
+              <span>
+                <span className="text-amber-300">Target mode on</span>
+                <span className="hidden xl:inline"> · hold a fist again to exit</span>
+                <span className="xl:hidden"> · fist to exit</span>
+              </span>
+            ) : (
+              <span>
+                <span className="hidden xl:inline">Hold a fist to start target mode</span>
+                <span className="xl:hidden">Hold a fist: target mode</span>
               </span>
             )}
           </motion.div>
