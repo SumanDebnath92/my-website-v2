@@ -17,6 +17,8 @@ import {
   ArrowRight,
   ArrowUpRight,
   Award,
+  Hand,
+  LoaderCircle,
   Bot,
   BriefcaseBusiness,
   ChevronDown,
@@ -31,7 +33,9 @@ import {
   Phone,
   Sparkles,
   Users,
+  VideoOff,
   Workflow,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -2169,6 +2173,47 @@ export default function Home() {
   const [workTab, setWorkTab] = useState<WorkTab>("projects");
   const [hasMore, setHasMore] = useState(false);
 
+  // Hand-gesture navigation: invite on load, toggle anytime from the header.
+  const [gesturesOn, setGesturesOn] = useState(false);
+  const [gestureIntro, setGestureIntro] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setGestureIntro(true), 900);
+    return () => window.clearTimeout(id);
+  }, []);
+  const acceptGestures = useCallback(() => {
+    setGestureIntro(false);
+    setGesturesOn(true);
+  }, []);
+  const skipGestures = useCallback(() => setGestureIntro(false), []);
+  // Brief "Moved to …" flash whenever a gesture navigates.
+  const [gestureFlash, setGestureFlash] = useState<GestureConfirm | null>(null);
+  useEffect(() => {
+    if (!gestureFlash) return;
+    const id = window.setTimeout(() => setGestureFlash(null), 1600);
+    return () => window.clearTimeout(id);
+  }, [gestureFlash]);
+  const onFingers = useCallback(
+    (n: number) => {
+      const target = GESTURE_TARGETS.find((g) => g.fingers === n);
+      if (target) {
+        // Number = fingers shown (5 = Experience); stage = where the page actually lives.
+        setGestureFlash({ id: Date.now(), page: n, label: target.label, stage: n === 5 ? 2 : n - 1 });
+      }
+      // 1 Intro · 2 Tech stack · 3 Projects · 4 Contact · 5 Experience (Work stage, Experience tab)
+      if (n === 1) goTo(0);
+      else if (n === 2) goTo(1);
+      else if (n === 3) {
+        setWorkTab("projects");
+        goTo(2);
+      } else if (n === 4) goTo(3);
+      else if (n === 5) {
+        setWorkTab("experience");
+        goTo(2);
+      }
+    },
+    [goTo],
+  );
+
   const scene: Scene =
     index === 0
       ? { kind: "portrait" }
@@ -2225,7 +2270,7 @@ export default function Home() {
                 >
                   <div className="w-full px-4 sm:px-8 lg:pr-8 lg:pl-10 xl:pr-12 xl:pl-14 2xl:pl-[max(3.5rem,calc(50vw-44rem))]">
                     <StageScroller
-                      startAtEnd={dir < 0 && index > 0}
+                      resetKey={index === 2 ? `work-${workTab}` : STAGES[index].id}
                       onNext={() => index < STAGE_COUNT - 1 && goTo(index + 1)}
                       onPrev={() => index > 0 && goTo(index - 1)}
                       onMoreChange={setHasMore}
@@ -2252,10 +2297,552 @@ export default function Home() {
           </main>
         </div>
 
-        <ProgressDots active={index} progress={progress} onNavigate={goTo} />
+        <ProgressDots active={index} progress={progress} onNavigate={goTo} pulse={gestureFlash} />
+        <HandGestures enabled={gesturesOn} onEnabledChange={setGesturesOn} onFingers={onFingers} confirm={gestureFlash} />
         <StageCounter active={index} />
       </div>
+      <GestureIntroModal open={gestureIntro} onAccept={acceptGestures} onSkip={skipGestures} />
     </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * Hand-gesture navigation (webcam → MediaPipe Hand Landmarker → finger count → stage)
+ * Everything runs on-device; video frames never leave the browser.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** What each finger count does. */
+const GESTURE_TARGETS = [
+  { fingers: 1, label: "Intro" },
+  { fingers: 2, label: "Tech stack" },
+  { fingers: 3, label: "Projects" },
+  { fingers: 4, label: "Contact" },
+  { fingers: 5, label: "Experience" },
+] as const;
+
+const MEDIAPIPE_VERSION = "1.2.2"; // keep in sync with package.json
+const HAND_MODEL_URL =
+  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+const GESTURE_HOLD_MS = 450; // a count must be held this long before it navigates
+const GESTURE_DETECT_INTERVAL_MS = 66; // ~15 detections per second
+
+type Landmark = { x: number; y: number; z: number };
+type HandLandmarkerLike = { detectForVideo(v: HTMLVideoElement, ts: number): { landmarks: Landmark[][] }; close(): void };
+
+let handLandmarkerPromise: Promise<HandLandmarkerLike> | null = null;
+/** Load the model once per page (lazily — only when gestures are turned on). */
+function loadHandLandmarker() {
+  handLandmarkerPromise ??= (async () => {
+    const { FilesetResolver, HandLandmarker } = await import("@mediapipe/tasks-vision");
+    const fileset = await FilesetResolver.forVisionTasks(
+      `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`,
+    );
+    const make = (delegate: "GPU" | "CPU") =>
+      HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate },
+        runningMode: "VIDEO",
+        numHands: 1,
+      });
+    try {
+      return (await make("GPU")) as unknown as HandLandmarkerLike;
+    } catch {
+      return (await make("CPU")) as unknown as HandLandmarkerLike;
+    }
+  })().catch((err) => {
+    handLandmarkerPromise = null; // allow a retry later
+    throw err;
+  });
+  return handLandmarkerPromise;
+}
+
+/**
+ * Which fingers are raised (thumb, index, middle, ring, pinky) from the 21 hand landmarks.
+ * Landmarks are normalised to the frame's width/height, so x is rescaled by the frame aspect to get
+ * true distances (otherwise sideways distances — like an extended thumb — come out ~25% short).
+ * Rotation-tolerant: everything is measured from the wrist / palm centre.
+ */
+function fingersUp(raw: Landmark[], aspect: number): boolean[] {
+  const lm = raw.map((l) => ({ x: l.x * aspect, y: l.y, z: l.z }));
+  const d = (a: Landmark, b: Landmark) => Math.hypot(a.x - b.x, a.y - b.y);
+  const wrist = lm[0];
+  const size = d(lm[0], lm[9]) || 1e-3; // wrist → middle knuckle
+  // Index, middle, ring, pinky: tip clearly farther from the wrist than the middle joint.
+  const four = ([[8, 6], [12, 10], [16, 14], [20, 18]] as const).map(([tip, pip]) => d(lm[tip], wrist) > d(lm[pip], wrist) * 1.1);
+  // Thumb: tip well away from the palm centre and from the index knuckle, and beyond its own joint.
+  const palm = [0, 5, 9, 13, 17].reduce((acc, i) => ({ x: acc.x + lm[i].x / 5, y: acc.y + lm[i].y / 5, z: 0 }), { x: 0, y: 0, z: 0 });
+  const thumb = d(lm[4], palm) > size * 0.7 && d(lm[4], lm[5]) > size * 0.42 && d(lm[4], palm) > d(lm[3], palm);
+  return [thumb, ...four];
+}
+
+const HAND_LINKS: [number, number][] = [
+  [0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17],
+];
+
+type GestureStatus = "off" | "loading" | "on" | "denied" | "error";
+/** A gesture-triggered navigation, used for the confirmation cues (gesture window + progress dot). */
+type GestureConfirm = { id: number; page: number; label: string; stage: number };
+
+/**
+ * Header toggle + live camera preview. When enabled it asks for the camera, runs hand tracking
+ * and calls `onFingers(n)` once a finger count has been held steady.
+ */
+function HandGestures({
+  enabled,
+  onEnabledChange,
+  onFingers,
+  confirm,
+}: {
+  enabled: boolean;
+  onEnabledChange: (on: boolean) => void;
+  onFingers: (n: number) => void;
+  /** Gesture navigation just happened: flash the window and show "Moved to …". */
+  confirm?: GestureConfirm | null;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const [status, setStatus] = useState<GestureStatus>("off");
+  const [live, setLive] = useState({ fingers: 0, hold: 0, fired: 0, seen: false, up: [false, false, false, false, false] });
+  const onFingersRef = useRef(onFingers);
+  useEffect(() => {
+    onFingersRef.current = onFingers;
+  }, [onFingers]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const video = videoRef.current;
+    if (!video) return;
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+    let timer = 0;
+    // Steady-hold state machine
+    let candidate = 0;
+    let since = 0;
+    let fired = 0;
+    let emptySince = 0;
+
+    const start = async () => {
+      setStatus("loading");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } },
+          audio: false,
+        });
+        if (cancelled) return;
+        video.srcObject = stream;
+        await video.play();
+        const landmarker = await loadHandLandmarker();
+        if (cancelled) return;
+        setStatus("on");
+
+        const tick = () => {
+          if (cancelled) return;
+          const now = performance.now();
+          let n = 0;
+          let up = [false, false, false, false, false];
+          let hand: Landmark[] | undefined;
+          if (video.readyState >= 2) {
+            hand = landmarker.detectForVideo(video, now).landmarks[0];
+            if (hand) {
+              up = fingersUp(hand, (video.videoWidth || 4) / (video.videoHeight || 3));
+              n = up.filter(Boolean).length;
+            }
+          }
+          drawHand(hand);
+
+          if (n === 0) {
+            if (!emptySince) emptySince = now;
+            if (now - emptySince > 300) fired = 0; // hand gone: allow the same count to fire again
+            candidate = 0;
+          } else {
+            emptySince = 0;
+            if (n !== candidate) {
+              candidate = n;
+              since = now;
+            }
+            if (n !== fired && now - since >= GESTURE_HOLD_MS) {
+              fired = n;
+              onFingersRef.current(n);
+            }
+          }
+          const hold = candidate && candidate !== fired ? Math.min(1, (now - since) / GESTURE_HOLD_MS) : candidate ? 1 : 0;
+          setLive({ fingers: candidate, hold, fired, seen: !!hand, up });
+          timer = window.setTimeout(tick, GESTURE_DETECT_INTERVAL_MS);
+        };
+        tick();
+      } catch (err) {
+        if (cancelled) return;
+        const name = (err as { name?: string })?.name;
+        setStatus(name === "NotAllowedError" || name === "SecurityError" ? "denied" : "error");
+        onEnabledChange(false);
+      }
+    };
+
+    const drawHand = (hand?: Landmark[]) => {
+      const c = overlayRef.current;
+      if (!c) return;
+      const g = c.getContext("2d")!;
+      g.clearRect(0, 0, c.width, c.height);
+      if (!hand) return;
+      // Fit the hand into the panel (centred, scaled up) so it reads as a clean graphic.
+      let minX = 1, minY = 1, maxX = 0, maxY = 0;
+      for (const l of hand) {
+        minX = Math.min(minX, l.x); maxX = Math.max(maxX, l.x);
+        minY = Math.min(minY, l.y); maxY = Math.max(maxY, l.y);
+      }
+      // Landmarks are normalised to the 4:3 video frame (same aspect as this canvas), so scale x and y equally.
+      const sc = Math.min(0.72 / Math.max(maxX - minX, 1e-3), 0.78 / Math.max(maxY - minY, 1e-3));
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+      const P = (l: Landmark) => [c.width / 2 + (l.x - cx) * c.width * sc, c.height / 2 + (l.y - cy) * c.height * sc] as const;
+      const grad = g.createLinearGradient(0, 0, c.width, c.height);
+      grad.addColorStop(0, "#22d3ee");
+      grad.addColorStop(1, "#a78bfa");
+      g.lineCap = "round";
+      g.lineJoin = "round";
+      g.shadowColor = "rgba(34,211,238,0.8)";
+      g.shadowBlur = 10;
+      g.strokeStyle = grad;
+      g.lineWidth = 3;
+      g.beginPath();
+      for (const [a, b] of HAND_LINKS) {
+        const [ax, ay] = P(hand[a]);
+        const [bx, by] = P(hand[b]);
+        g.moveTo(ax, ay);
+        g.lineTo(bx, by);
+      }
+      g.stroke();
+      g.shadowBlur = 0;
+      g.fillStyle = "#e0f2fe";
+      hand.forEach((l, i) => {
+        const [x, y] = P(l);
+        g.beginPath();
+        g.arc(x, y, [4, 8, 12, 16, 20].includes(i) ? 4.5 : 2.4, 0, Math.PI * 2);
+        g.fill();
+      });
+      g.fillStyle = "#c4b5fd";
+      for (const tip of [4, 8, 12, 16, 20]) {
+        const [x, y] = P(hand[tip]);
+        g.beginPath();
+        g.arc(x, y, 2.2, 0, Math.PI * 2);
+        g.fill();
+      }
+    };
+
+    start();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      stream?.getTracks().forEach((tr) => tr.stop());
+      video.srcObject = null;
+      setStatus((st) => (st === "denied" || st === "error" ? st : "off"));
+      setLive({ fingers: 0, hold: 0, fired: 0, seen: false, up: [false, false, false, false, false] });
+    };
+  }, [enabled, onEnabledChange]);
+
+  const active = enabled && status === "on";
+  const target = GESTURE_TARGETS.find((g) => g.fingers === live.fingers);
+  const toggleLabel =
+    status === "loading" ? "Starting camera…"
+      : active ? "Hand gestures on"
+        : status === "denied" ? "Camera blocked — allow it in your browser's site settings, then try again"
+          : status === "error" ? "Couldn't start hand tracking — click to retry"
+            : "Hand gestures off";
+
+  return (
+    <>
+      {/* Header toggle (top-right) */}
+      <button
+        type="button"
+        onClick={() => onEnabledChange(!enabled)}
+        aria-pressed={enabled}
+        aria-label={toggleLabel}
+        title={toggleLabel}
+        className={`glass group absolute top-3 right-3 z-40 flex h-10 cursor-pointer items-center gap-2 rounded-full pr-3.5 pl-2.5 font-mono text-[11px] tracking-wide transition-[border-color,box-shadow] duration-300 sm:top-4 sm:right-5 ${
+          active
+            ? "border-primary/50 text-fg shadow-[0_0_24px_-4px_rgb(34_211_238/0.55)]"
+            : "text-muted hover:border-primary/30 hover:text-fg-soft"
+        }`}
+      >
+        <span className="relative flex h-6 w-6 items-center justify-center">
+          {status === "loading" ? (
+            <LoaderCircle className="h-4 w-4 animate-spin text-primary" aria-hidden />
+          ) : status === "denied" || status === "error" ? (
+            <VideoOff className="h-4 w-4 text-red-400" aria-hidden />
+          ) : (
+            <Hand className={`h-4 w-4 ${active ? "text-primary" : ""}`} aria-hidden />
+          )}
+          {active && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 animate-pulse rounded-full bg-success" />}
+        </span>
+        <span className="hidden sm:inline">Gestures</span>
+        <span
+          aria-hidden
+          className={`relative h-4 w-7 rounded-full border transition-colors duration-300 ${
+            active ? "border-primary/60 bg-primary/25" : "border-line-strong bg-white/[0.04]"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-2.5 w-2.5 rounded-full transition-all duration-300 ${
+              active ? "left-3.5 bg-primary" : "left-0.5 bg-muted"
+            }`}
+          />
+        </span>
+      </button>
+
+      {/* Live preview: mirrored camera, hand skeleton, finger count and hold-to-go ring */}
+      <AnimatePresence>
+        {enabled && (
+          <motion.div
+            key="cam"
+            initial={{ opacity: 0, y: -8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.96 }}
+            transition={{ duration: 0.25 }}
+            className={`glass absolute top-16 right-3 z-40 w-36 overflow-hidden rounded-2xl transition-[border-color,box-shadow] duration-300 sm:top-[4.25rem] sm:right-5 sm:w-40 ${
+              confirm ? "border-primary/70 shadow-[0_0_28px_-4px_rgb(34_211_238/0.7)]" : ""
+            }`}
+          >
+            <div
+              className="relative aspect-[4/3] w-full bg-[radial-gradient(circle_at_50%_60%,rgba(34,211,238,0.08),transparent_70%)]"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle at 50% 60%, rgba(34,211,238,0.08), transparent 70%), linear-gradient(rgba(125,211,252,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.06) 1px, transparent 1px)",
+                backgroundSize: "100% 100%, 16px 16px, 16px 16px",
+              }}
+            >
+              {/* The camera feed is only used for tracking — it is never shown. */}
+              <video ref={videoRef} muted playsInline aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px opacity-0" />
+              <canvas ref={overlayRef} width={320} height={240} className="absolute inset-0 h-full w-full -scale-x-100" />
+              {status === "on" && !live.seen && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-primary/50">
+                  <FingersIcon count={5} className="h-10 w-10" />
+                  <span className="font-mono text-[10px] text-muted">Show your hand</span>
+                </div>
+              )}
+              {status === "loading" && (
+                <div className="absolute inset-0 flex items-center justify-center gap-2 font-mono text-[10px] text-fg-soft">
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden />
+                  Loading hand tracking…
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => onEnabledChange(false)}
+                aria-label="Turn off hand gestures"
+                className="absolute top-1.5 right-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/50 text-fg-soft transition-colors hover:text-fg"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </div>
+            <div className="flex items-center gap-2 px-2.5 py-1.5" aria-live="polite">
+              <span className="relative flex h-7 w-7 shrink-0 items-center justify-center">
+                {confirm && (
+                  <motion.span
+                    key={confirm.id}
+                    aria-hidden
+                    className="absolute inset-0 rounded-full border-2 border-primary"
+                    initial={{ scale: 1, opacity: 0.9 }}
+                    animate={{ scale: 1.9, opacity: 0 }}
+                    transition={{ duration: 0.7, ease: "easeOut" }}
+                  />
+                )}
+                <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90" aria-hidden>
+                  <circle cx="18" cy="18" r="15" fill="none" stroke="rgb(255 255 255 / 0.08)" strokeWidth="3" />
+                  <circle
+                    cx="18" cy="18" r="15" fill="none" stroke="url(#gestureRing)" strokeWidth="3" strokeLinecap="round"
+                    strokeDasharray={`${live.hold * 94.2} 94.2`}
+                  />
+                  <defs>
+                    <linearGradient id="gestureRing" x1="0" x2="1">
+                      <stop offset="0" stopColor="#22d3ee" />
+                      <stop offset="1" stopColor="#a78bfa" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <span className="font-mono text-sm font-bold text-fg">{live.fingers || "–"}</span>
+              </span>
+              <span className="min-w-0 font-mono text-[10px] leading-tight">
+                {confirm ? (
+                  <>
+                    <span className="block text-primary">Moved to</span>
+                    <span className="block truncate text-fg">
+                      {String(confirm.page).padStart(2, "0")} · {confirm.label}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="block text-fg">{target ? target.label : "Show 1–5 fingers"}</span>
+                    <span className="block text-muted">
+                      {target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : "Palm facing the camera"}
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+/**
+ * Hand silhouette with `count` fingers raised (1 = index, 2 = index + middle, 3 = + ring, 4 = + pinky,
+ * 5 = open palm with thumb). Raised fingers fan out at natural angles (a "V" for two); folded fingers
+ * show as knuckles; the thumb appears only when it is out.
+ */
+const FINGER_SPREAD: Record<number, number[]> = {
+  1: [-4, 0, 0, 0],
+  2: [-12, 7, 0, 0],
+  3: [-13, -1, 11, 0],
+  4: [-14, -4, 6, 16],
+  5: [-14, -4, 6, 16],
+};
+function FingersIcon({ count, className = "" }: { count: number; className?: string }) {
+  const base = [
+    { x: 12.2, y: 16.2, len: 10.8, w: 3.3 }, // index
+    { x: 15.6, y: 15.6, len: 12.2, w: 3.3 }, // middle
+    { x: 18.9, y: 16.1, len: 11.2, w: 3.1 }, // ring
+    { x: 21.8, y: 17.4, len: 8.8, w: 2.8 }, // pinky
+  ];
+  const spread = FINGER_SPREAD[Math.min(5, Math.max(1, count))];
+  return (
+    <svg viewBox="0 0 32 32" fill="currentColor" className={className} aria-hidden>
+      {/* wrist + palm */}
+      <rect x="12.6" y="25" width="7.8" height="5" rx="2.2" />
+      <rect x="10.4" y="15" width="13" height="12.4" rx="5.2" />
+      {base.map((f, i) => {
+        const up = i < count;
+        const len = up ? f.len : 2.2; // folded → knuckle only
+        return (
+          <rect
+            key={i}
+            x={-f.w / 2}
+            y={-len}
+            width={f.w}
+            height={len + 2.5}
+            rx={f.w / 2}
+            transform={`translate(${f.x} ${f.y}) rotate(${up ? spread[i] : 0})`}
+          />
+        );
+      })}
+      {count >= 5 && <rect x={-1.7} y={-8.6} width={3.4} height={10.4} rx={1.7} transform="translate(11.4 22.6) rotate(-50)" />}
+    </svg>
+  );
+}
+
+/** First-visit invitation to try hand-gesture navigation. */
+function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept: () => void; onSkip: () => void }) {
+  const acceptRef = useRef<HTMLButtonElement>(null);
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setTimeout(() => acceptRef.current?.focus(), 50);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onSkip();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onSkip]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="gesture-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg/60 p-4 backdrop-blur-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gesture-modal-title"
+            aria-describedby="gesture-modal-desc"
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            className="glass relative w-full max-w-md overflow-hidden rounded-3xl p-6 sm:p-8"
+          >
+            <div aria-hidden className="pointer-events-none absolute -top-24 -right-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
+            <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
+
+            <div className="relative">
+              <div className="mb-5 flex items-center gap-3">
+                {/* Static hand with a soft glow pulse — no waving, since waving isn't a gesture here. */}
+                <motion.span
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/40 bg-primary/10 text-primary"
+                  animate={
+                    reduce
+                      ? undefined
+                      : {
+                          boxShadow: [
+                            "0 0 18px -8px rgba(34,211,238,0.5)",
+                            "0 0 34px -4px rgba(34,211,238,0.85)",
+                            "0 0 18px -8px rgba(34,211,238,0.5)",
+                          ],
+                        }
+                  }
+                  transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <Hand className="h-6 w-6" aria-hidden />
+                </motion.span>
+                <span className="font-mono text-[11px] tracking-[0.2em] text-primary uppercase">Hand gesture mode</span>
+              </div>
+
+              <h2 id="gesture-modal-title" className="font-mono text-2xl font-bold tracking-tight sm:text-3xl">
+                Jump pages with <span className="glow-text bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">your fingers.</span>
+              </h2>
+              <p id="gesture-modal-desc" className="mt-3 text-[15px] leading-relaxed text-fg-soft">
+                Tap <span className="text-fg">Let&apos;s do it</span>, allow camera access when your browser asks, then hold up 1–5
+                fingers to go straight to any section — no scrolling needed.
+              </p>
+
+              <ul className="mt-5 grid grid-cols-5 gap-1.5" aria-label="Finger shortcuts">
+                {GESTURE_TARGETS.map((g) => (
+                  <li
+                    key={g.fingers}
+                    className="flex flex-col items-center gap-1 rounded-xl border border-line bg-white/[0.03] px-1 pt-2 pb-1.5 text-center"
+                  >
+                    <FingersIcon count={g.fingers} className="h-8 w-8 text-primary" />
+                    <span className="sr-only">{g.fingers} {g.fingers === 1 ? "finger" : "fingers"}:</span>
+                    <span className="block font-mono text-[9.5px] leading-tight text-fg-soft">{g.label}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  className="min-h-11 flex-1 cursor-pointer rounded-full border border-line px-4 font-mono text-sm whitespace-nowrap text-fg-soft transition-colors duration-200 hover:border-line-strong hover:text-fg"
+                >
+                  Skip, I&apos;ll scroll
+                </button>
+                <button
+                  ref={acceptRef}
+                  type="button"
+                  onClick={onAccept}
+                  className="group inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary to-secondary px-4 font-mono text-sm font-semibold whitespace-nowrap text-bg shadow-[0_0_30px_-6px_rgb(167_139_250/0.8)] transition-transform duration-200 hover:-translate-y-0.5"
+                >
+                  <Hand className="h-4 w-4" aria-hidden />
+                  Let&apos;s do it
+                </button>
+              </div>
+              <p className="mt-4 text-center font-mono text-[10.5px] leading-relaxed text-muted">
+                Your browser will ask for camera access. Everything runs on your device; video never leaves it.
+                You can switch gestures on or off anytime from the top-right.
+              </p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -2271,14 +2858,14 @@ export default function Home() {
  */
 function StageScroller({
   children,
-  startAtEnd,
+  resetKey,
   onNext,
   onPrev,
   onMoreChange,
 }: {
   children: ReactNode;
-  /** Open scrolled to the end (when arriving from the stage below). */
-  startAtEnd: boolean;
+  /** Changing this scrolls the panel back to the top. */
+  resetKey: string;
   onNext: () => void;
   onPrev: () => void;
   onMoreChange: (more: boolean) => void;
@@ -2361,23 +2948,14 @@ function StageScroller({
     onMoreChange(more);
   }, [more, onMoreChange]);
 
-  // Arriving from the stage below: start at the end so reading continues upward naturally.
-  // Set before the first paint — no visible jump while the stage animates in.
-  const pinToEnd = useRef(startAtEnd);
+  // Every stage opens scrolled to the top, whichever direction you arrive from (set before first paint).
+  // `resetKey` also changes when the Work page switches between Projects and Experience.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (startAtEnd) el.scrollTop = el.scrollHeight;
-    gesture.current.edgeDir = startAtEnd ? 1 : -1;
-  }, [startAtEnd]);
-  // The end spacer renders once overflow is detected; top up to the true end once, while the
-  // stage is still fading in (invisible), then never touch the scroll position again.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !overflow || !pinToEnd.current) return;
-    el.scrollTop = el.scrollHeight;
-    pinToEnd.current = false;
-  }, [overflow]);
+    el.scrollTop = 0;
+    gesture.current.edgeDir = -1;
+  }, [resetKey]);
 
   useEffect(() => {
     const el = ref.current;
@@ -2701,10 +3279,13 @@ function ProgressDots({
   active,
   progress,
   onNavigate,
+  pulse,
 }: {
   active: number;
   progress: MotionValue<number>;
   onNavigate: (i: number) => void;
+  /** Gesture navigation: ripple the destination dot and show a small page tag beside it. */
+  pulse?: GestureConfirm | null;
 }) {
   const fill = useSpring(progress, { stiffness: 120, damping: 24 });
 
@@ -2732,9 +3313,40 @@ function ProgressDots({
                 }}
                 transition={{ type: "spring", stiffness: 300, damping: 24 }}
               />
-              <span className="glass pointer-events-none absolute right-11 rounded-md px-2 py-1 font-mono text-[11px] whitespace-nowrap text-fg-soft opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
-                {s.title}
-              </span>
+              {pulse?.stage === i && (
+                <>
+                  {[0, 0.25].map((delay) => (
+                    <motion.span
+                      key={`${pulse.id}-${delay}`}
+                      aria-hidden
+                      className="pointer-events-none absolute h-6 w-6 rounded-full border border-primary"
+                      initial={{ scale: 0.4, opacity: 0.9 }}
+                      animate={{ scale: 2.2, opacity: 0 }}
+                      transition={{ duration: 0.9, delay, ease: "easeOut" }}
+                    />
+                  ))}
+                </>
+              )}
+              <AnimatePresence>
+                {pulse?.stage === i ? (
+                  <motion.span
+                    key={pulse.id}
+                    className="pointer-events-none absolute right-11 flex items-center gap-1.5 rounded-lg border border-primary/50 bg-bg-raised/95 py-1 pr-2.5 pl-1.5 font-mono text-[11px] whitespace-nowrap text-fg shadow-[0_0_20px_-6px_rgb(34_211_238/0.7)]"
+                    initial={{ opacity: 0, x: 6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 6 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <FingersIcon count={pulse.page} className="h-4 w-4 text-primary" />
+                    <span className="text-primary">{String(pulse.page).padStart(2, "0")}</span>
+                    {pulse.label}
+                  </motion.span>
+                ) : (
+                  <span className="glass pointer-events-none absolute right-11 rounded-md px-2 py-1 font-mono text-[11px] whitespace-nowrap text-fg-soft opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
+                    {s.title}
+                  </span>
+                )}
+              </AnimatePresence>
             </button>
           ))}
         </div>
