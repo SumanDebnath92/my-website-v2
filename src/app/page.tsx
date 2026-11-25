@@ -34,10 +34,12 @@ import {
   Sparkles,
   ThumbsDown,
   ThumbsUp,
-  Users,
   VideoOff,
   Workflow,
   Crosshair,
+  Send,
+  CircleCheck,
+  CircleAlert,
 } from "lucide-react";
 import {
   useCallback,
@@ -60,20 +62,16 @@ const PROFILE = {
   lastName: "Debnath",
   title: "Senior Frontend Engineer",
   specialty: "React.js & Next.js Specialist · Full Stack (Node.js)",
-  bio: "I turn complex product ideas into fast, scalable React applications. I built and owned a React Flow workflow automation builder used by 155+ customer organizations running 1,200+ live workflows. I ship production code in React.js, Next.js (SSR, SSG, ISR) and TypeScript, lead teams through reviews and mentoring, and use AI-assisted development (Claude Code + Figma MCP) to ship 55% faster. I also deliver full stack features with Node.js, Express and MongoDB.",
-  years: [
-    { value: "12+", label: "yrs web development" },
-    { value: "6+", label: "yrs React.js & Next.js" },
-    { value: "3+", label: "yrs full stack" },
-  ],
+  bio: "I turn complex product ideas into fast, scalable React applications. I built and owned a React Flow workflow automation builder used by 155+ customer organizations running 1,200+ live workflows. I ship production code in React.js, Next.js (SSR, SSG, ISR) and TypeScript, lead teams through reviews and mentoring, and use AI-assisted development (Claude Code + Figma MCP) to deliver 65 to 70% faster. I also deliver full stack features with Node.js, Express and MongoDB.",
+  totalYears: "12+",
+  /** Career phases in order — the bar widths follow the years, so the total reads as a journey, not 12 years of one thing. */
   path: [
-    "Web Designer & HTML",
-    "Frontend (JS, jQuery)",
-    "React.js & Next.js",
-    "Full Stack (Node.js)",
+    { label: "Web Designer & HTML", years: 1 },
+    { label: "Frontend (JS, jQuery)", years: 2 },
+    { label: "React.js & Next.js", years: 6 },
+    { label: "Full Stack (Node.js)", years: 3 },
   ],
   location: "Kolkata, West Bengal, India",
-  availability: "Immediate joiner",
   relocation: "Open to relocate: on-site anywhere in India · Hybrid · Remote",
 };
 
@@ -90,7 +88,7 @@ const CONTACT = {
 const STATS = [
   { value: "155+", label: "Customer orgs on my React Flow builder" },
   { value: "1,200+", label: "Live automation workflows" },
-  { value: "55%", label: "Faster delivery with Claude Code + Figma MCP" },
+  { value: "65–70%", label: "Faster delivery with Claude Code + Figma MCP" },
   { value: "60–70%", label: "Fewer redundant API calls" },
   { value: "6", label: "Engineers led across 12–14 live products" },
   { value: "1,000+", label: "Concurrent users on the platform" },
@@ -137,7 +135,7 @@ const STACK: StackGroup[] = [
     groups: [
       {
         label: "Backend & DevOps",
-        items: ["Node.js", "Express", "MongoDB", "Mongoose", "JWT Auth", "Docker", "AWS EC2", "Vercel", "Railway", "GitHub Actions CI/CD"],
+        items: ["Node.js", "Express.js", "MongoDB", "Mongoose", "JWT Auth", "Docker", "AWS EC2", "Vercel", "Railway", "GitHub Actions CI/CD"],
       },
     ],
   },
@@ -147,7 +145,7 @@ const STACK: StackGroup[] = [
     groups: [
       {
         label: "Ship faster",
-        items: ["Claude Code", "Figma MCP", "GitHub Copilot", "OpenAI Codex", "Spec Driven Dev"],
+        items: ["Claude Code", "Figma MCP", "GitHub Copilot", "OpenAI Codex", "Prompt Engineering", "Spec Driven Dev"],
       },
     ],
   },
@@ -165,7 +163,7 @@ const STACK: StackGroup[] = [
 
 const STRENGTHS = [
   { title: "Performance first", text: "Fast, lean UIs on data-heavy pages" },
-  { title: "AI-accelerated delivery", text: "Claude Code + Figma MCP, 55% faster" },
+  { title: "AI-accelerated delivery", text: "Claude Code + Figma MCP, 65–70% faster" },
   { title: "Team leadership", text: "Reviews, standards and mentoring" },
   { title: "Complex UI at scale", text: "Flow, IVR and node builders for 1,000+ users" },
 ];
@@ -221,7 +219,7 @@ const PROJECTS: Project[] = [
     badge: "Full stack",
     summary:
       "Training programs, video lessons and student progress tracking. App Router Server/Client split, JWT auth with middleware route protection, TanStack Query mutations, Zod on both ends, rate-limited APIs and Jest tests. Dockerized, deployed on Vercel + Railway.",
-    tags: ["Next.js", "TypeScript", "TanStack Query", "Tailwind CSS", "Node.js", "Express", "MongoDB", "Docker", "Jest"],
+    tags: ["Next.js", "TypeScript", "TanStack Query", "Tailwind CSS", "Node.js", "Express.js", "MongoDB", "Docker", "Jest"],
   },
   {
     name: "Legal Will Creation Platform",
@@ -257,33 +255,33 @@ const EXPERIENCE: Role[] = [
   },
   {
     role: "Group Leader, Frontend Engineering",
-    company: "Tier5 Technology Solutions",
-    meta: "Kolkata · CRM, SaaS, Workflow Automation",
+    company: "Tier5 Technology Solutions Pvt. Ltd.",
+    meta: "Kolkata · Product company (CRM, SaaS, Workflow Automation)",
     period: "Mar 2018 — Aug 2026",
     note: "Frontend Developer → Senior Developer → Group Leader",
     points: [
       "Built and owned the visual Workflow Automation Builder (React.js + React Flow) — the platform's core differentiator, adopted by 155+ organizations running 1,200+ live workflows for 1,000+ concurrent users.",
       "Led frontend for 12–14 concurrent products with a 6-engineer team, owning technical decisions, code reviews, sprint planning and delivery.",
-      "Cut a 20-day feature delivery to 9 days (55% faster) by bringing Claude Code + Figma MCP into the team — it became the internal delivery benchmark.",
+      "Delivered features 65–70% faster by bringing Claude Code + Figma MCP and structured prompting into the team workflow — it became the internal delivery benchmark and earned direct client appreciation.",
       "Reduced redundant network requests by 60–70% with list virtualization, de-duplicated API calls and debounced search; tuned data-heavy pages with React.memo, useMemo and useCallback.",
       "Designed a recursive tree layout algorithm for React Flow that removed node overlap in deeply nested workflows, fixing a blocking UX issue for every client account.",
       "Proposed an in-app OTP check-in flow for gym kiosk tablets that removed SMS costs completely; adopted by the client.",
       "Grew 4 junior engineers into mid-senior contributors over 3 years through architecture guidelines, reviews and hands-on sessions.",
     ],
-    tags: ["React.js", "React Flow", "Redux", "Next.js", "TypeScript", "Zustand", "Zod", "Jest", "React Testing Library", "Chrome Extension APIs"],
+    tags: ["React.js", "React Flow", "Redux", "Next.js", "TypeScript", "Zustand", "Zod", "Jest", "React Testing Library"],
   },
 ];
 
 const EARLIER_ROLES = [
   {
     role: "Frontend Developer",
-    company: "Mapps IT Services",
+    company: "Mapps IT Services Pvt. Ltd.",
     period: "May 2015 — Mar 2018",
     text: "Frontend for Experiture (omnichannel marketing automation SaaS) and EasyPURL (personalized URL platform) for automotive, healthcare, retail and education clients.",
   },
   {
     role: "Frontend Developer",
-    company: "Capital Numbers Infotech",
+    company: "Capital Numbers Infotech Pvt. Ltd.",
     period: "Aug 2013 — Sep 2014",
     text: "Pixel-perfect responsive websites for international clients, with JavaScript interactions and fast production hotfixes.",
   },
@@ -2876,7 +2874,10 @@ export default function Home() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  className="pointer-events-auto absolute inset-0 flex items-center"
+                  className={`pointer-events-auto absolute inset-0 flex items-center ${
+                    // Hero: start just under the stage counter and use the full height down to the scroll pill.
+                    index === 0 ? "lg:items-start lg:pt-[max(3.25rem,calc((100vh-44rem)/2))]" : ""
+                  }`}
                 >
                   <div className="w-full px-4 sm:px-8 lg:pr-8 lg:pl-10 xl:pr-12 xl:pl-14 2xl:pl-[max(3.5rem,calc(50vw-44rem))]">
                     <StageScroller
@@ -2884,6 +2885,7 @@ export default function Home() {
                       onNext={() => index < STAGE_COUNT - 1 && goTo(index + 1)}
                       onPrev={() => index > 0 && goTo(index - 1)}
                       onMoreChange={setHasMore}
+                      tall={index === 0}
                     >
                       <div className="mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none">
                         {index === 0 && <HeroStage onNavigate={goTo} />}
@@ -3685,8 +3687,11 @@ function StageScroller({
   onNext,
   onPrev,
   onMoreChange,
+  tall = false,
 }: {
   children: ReactNode;
+  /** Hero: top-aligned, so the panel may use the full height down to the scroll pill. */
+  tall?: boolean;
   /** Changing this scrolls the panel back to the top. */
   resetKey: string;
   onNext: () => void;
@@ -3707,7 +3712,9 @@ function StageScroller({
     const el = ref.current;
     if (!el) return;
     const max = el.scrollHeight - el.clientHeight;
-    const of = max > 4;
+    // Ignore the end spacer we add while overflowing — otherwise it keeps "overflow" switched on by itself.
+    const spacer = el.querySelector<HTMLElement>(":scope > [data-scroll-spacer]")?.offsetHeight ?? 0;
+    const of = max - spacer > 4;
     const remaining = max - el.scrollTop;
     setOverflow(of);
     setMore(of && remaining > 8);
@@ -3863,10 +3870,12 @@ function StageScroller({
           onWheel={onWheel}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
-          className={`no-scrollbar -mx-4 -my-3 max-h-[calc(82vh+1.5rem)] overflow-y-auto px-4 py-3 ${overflow ? "overscroll-contain" : ""}`}
+          className={`no-scrollbar -mx-4 -my-3 overflow-y-auto px-4 py-3 ${
+            tall ? "max-h-[calc(82vh+1.5rem)] lg:max-h-[calc(100vh-7.25rem)]" : "max-h-[calc(82vh+1.5rem)]"
+          } ${overflow ? "overscroll-contain" : ""}`}
         >
           {children}
-          {overflow && <div aria-hidden className="h-10" />}
+          {overflow && <div aria-hidden data-scroll-spacer className="h-10" />}
         </div>
 
         <AnimatePresence>
@@ -4457,18 +4466,53 @@ function LinkedinIcon(props: SVGProps<SVGSVGElement>) {
  * Stage 1 — Hero Intro
  * ════════════════════════════════════════════════════════════════════════════ */
 
+/** Career path: one row of capsules (2×2 on phones), each with its years on top; they add up to the total. */
+function CareerPath() {
+  const last = PROFILE.path.length - 1;
+  return (
+    <motion.div variants={itemVariants} className="mt-4">
+      <p className="font-mono text-[13px] text-fg-soft">
+        <span className="font-semibold text-fg">{PROFILE.totalYears} years</span> in web development
+        <span className="text-muted"> · career path</span>
+      </p>
+      <ol aria-label="Career path" className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        {PROFILE.path.map((p, i) => (
+          <li
+            key={p.label}
+            className={`relative flex min-w-0 flex-col justify-center rounded-xl border px-3 py-1.5 ${
+              i === last
+                ? "border-primary/40 bg-primary/10 shadow-[0_0_18px_-6px_rgb(34_211_238/0.6)]"
+                : "border-line bg-white/[0.03]"
+            }`}
+          >
+            <span className={`font-mono text-[15px] leading-tight font-bold ${i === last ? "text-primary" : "text-fg"}`}>
+              {p.years} {p.years > 1 ? "yrs" : "yr"}
+              {i === last && <span className="ml-1 align-middle font-mono text-[10.5px] font-medium text-secondary">· now</span>}
+            </span>
+            <span className={`mt-0.5 font-mono text-[11.5px] leading-snug ${i === last ? "text-primary/90" : "text-fg-soft"}`}>{p.label}</span>
+            {i < last && (
+              <ArrowRight
+                aria-hidden
+                className="absolute top-1/2 -right-[11px] z-10 hidden h-3 w-3 -translate-y-1/2 text-muted sm:block"
+              />
+            )}
+          </li>
+        ))}
+      </ol>
+    </motion.div>
+  );
+}
+
 function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
   return (
     <div className="w-full">
       <motion.div
         variants={itemVariants}
-        className="glass mb-5 inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-[11px] text-fg-soft sm:text-xs"
+        className="glass mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-[11px] text-fg-soft sm:text-xs"
       >
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
-        </span>
-        {PROFILE.availability} · Kolkata, India
+        <MapPin className="h-3.5 w-3.5 text-primary" aria-hidden />
+        Kolkata, India
+        <span className="text-muted">· Remote · Hybrid · On-site</span>
       </motion.div>
 
       <motion.h1
@@ -4482,34 +4526,19 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
         </span>
       </motion.h1>
 
-      <motion.p variants={itemVariants} className="mt-4 font-mono text-sm text-primary sm:text-base">
+      <motion.p variants={itemVariants} className="mt-3 font-mono text-sm text-primary sm:text-base">
         {PROFILE.title}
         <span className="text-muted">{" // "}</span>
         <span className="text-fg-soft">{PROFILE.specialty}</span>
       </motion.p>
 
-      <motion.ul variants={itemVariants} className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-muted">
-        {PROFILE.years.map((y) => (
-          <li key={y.label}>
-            <span className="font-semibold text-fg">{y.value}</span> {y.label}
-          </li>
-        ))}
-      </motion.ul>
-
-      <motion.p variants={itemVariants} className="mt-4 text-[15px] leading-relaxed text-fg-soft">
+      <motion.p variants={itemVariants} className="mt-3 text-[15px] leading-[1.55] text-fg-soft">
         {PROFILE.bio}
       </motion.p>
 
-      <motion.ol variants={itemVariants} aria-label="Career path" className="mt-4 flex flex-wrap items-center gap-1.5">
-        {PROFILE.path.map((step, i) => (
-          <li key={step} className="flex items-center gap-1.5">
-            <Tag strong={i === PROFILE.path.length - 1}>{step}</Tag>
-            {i < PROFILE.path.length - 1 && <ArrowRight aria-hidden className="h-3 w-3 text-muted" />}
-          </li>
-        ))}
-      </motion.ol>
+      <CareerPath />
 
-      <motion.div variants={itemVariants} className="mt-6 flex flex-wrap gap-3">
+      <motion.div variants={itemVariants} className="mt-5 flex flex-wrap gap-3">
         <button
           type="button"
           onClick={() => onNavigate(2)}
@@ -4523,17 +4552,38 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
           onClick={() => onNavigate(3)}
           className="glass inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full px-5 font-mono text-sm text-fg transition-colors duration-200 hover:border-primary/40"
         >
-          <Mail className="h-4 w-4" />
-          Get in touch
+          <Send className="h-4 w-4" />
+          Send a message
         </button>
       </motion.div>
 
-      <div className="mt-7 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+      <motion.ul variants={itemVariants} aria-label="Contact" className="mt-3 flex flex-wrap gap-2 sm:flex-nowrap">
+        {CONTACT_LINKS.map((c) => {
+          const external = c.href.startsWith("http");
+          return (
+            <li key={c.label} className={c.iconOnly ? "sm:flex-none 2xl:flex-auto" : "flex-auto"}>
+              <a
+                href={c.href}
+                {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                aria-label={`${c.label}: ${c.value}`}
+                title={c.value}
+                className="group flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-line bg-white/[0.03] px-3.5 font-mono text-[13.5px] whitespace-nowrap lg:max-xl:gap-1.5 lg:max-xl:px-3 lg:max-xl:text-[12px] text-fg-soft transition-colors duration-200 hover:border-primary/40 hover:text-fg"
+              >
+                <c.icon className="h-[18px] w-[18px] shrink-0 text-primary" aria-hidden />
+                {/* LinkedIn / GitHub: label hidden on mid-size screens so the row stays on one line */}
+                <span className={c.iconOnly ? "sm:hidden 2xl:inline" : ""}>{c.short}</span>
+              </a>
+            </li>
+          );
+        })}
+      </motion.ul>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {STATS.map((s, i) => (
           <TiltCard key={s.label} intensity={12}>
-            <div className="p-3.5">
-              <p className={`font-mono text-xl font-bold sm:text-2xl ${i % 2 === 0 ? "text-primary" : "text-secondary"}`}>{s.value}</p>
-              <p className="mt-0.5 text-[11.5px] leading-snug text-fg-soft">{s.label}</p>
+            <div className="px-3.5 py-2.5">
+              <p className={`font-mono text-xl leading-none font-bold sm:text-2xl sm:leading-none ${i % 2 === 0 ? "text-primary" : "text-secondary"}`}>{s.value}</p>
+              <p className="mt-1 text-[11.5px] leading-snug text-fg-soft">{s.label}</p>
             </div>
           </TiltCard>
         ))}
@@ -4651,6 +4701,28 @@ function StackStage({ activeGroup, onGroup }: { activeGroup: number; onGroup: (g
             </TiltCard>
           </div>
         ))}
+
+        <div className="sm:col-span-2">
+          <TiltCard intensity={4}>
+            <div className="p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <GraduationCap className="h-4 w-4 text-secondary" aria-hidden />
+                <h3 className="font-mono text-sm font-semibold">Certifications & Education</h3>
+              </div>
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {CREDENTIALS.map((c) => (
+                  <li key={c.title} className="flex gap-2.5">
+                    <c.icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
+                    <div>
+                      <p className="text-[13px] leading-snug text-fg">{c.title}</p>
+                      <p className="font-mono text-[11px] text-muted">{c.meta}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </TiltCard>
+        </div>
       </div>
     </div>
   );
@@ -4894,11 +4966,124 @@ function RoleCard({ role: r }: { role: Role }) {
  * ════════════════════════════════════════════════════════════════════════════ */
 
 const CONTACT_LINKS = [
-  { icon: Mail, label: "Email", value: CONTACT.email, href: `mailto:${CONTACT.email}` },
-  { icon: LinkedinIcon, label: "LinkedIn", value: CONTACT.linkedinLabel, href: CONTACT.linkedin },
-  { icon: GithubIcon, label: "GitHub", value: CONTACT.githubLabel, href: CONTACT.github },
-  { icon: Phone, label: "Phone", value: CONTACT.phone, href: CONTACT.phoneHref },
+  { icon: Mail, label: "Email", short: CONTACT.email, value: CONTACT.email, href: `mailto:${CONTACT.email}` },
+  { icon: Phone, label: "Phone", short: CONTACT.phone, value: CONTACT.phone, href: CONTACT.phoneHref },
+  { icon: LinkedinIcon, label: "LinkedIn", short: "LinkedIn", value: CONTACT.linkedinLabel, href: CONTACT.linkedin, iconOnly: true },
+  { icon: GithubIcon, label: "GitHub", short: "GitHub", value: CONTACT.githubLabel, href: CONTACT.github, iconOnly: true },
 ];
+
+type FormStatus = "idle" | "sending" | "sent" | "mailto" | "error";
+
+/** Contact form: posts to /api/contact (emails Suman). Falls back to the visitor's mail app if sending isn't set up. */
+function ContactForm() {
+  const [status, setStatus] = useState<FormStatus>("idle");
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ name: "", email: "", message: "", company: "" });
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (status === "sending") return;
+    setStatus("sending");
+    setError("");
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (res.ok) {
+        setStatus("sent");
+        setForm({ name: "", email: "", message: "", company: "" });
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+      if (data.code === "not_configured") {
+        // Sending isn't set up on the server yet: open the visitor's mail app with everything filled in.
+        const body = `${form.message}\n\n— ${form.name} (${form.email})`;
+        window.location.href = `mailto:${CONTACT.email}?subject=${encodeURIComponent(`Portfolio message from ${form.name}`)}&body=${encodeURIComponent(body)}`;
+        setStatus("mailto");
+        return;
+      }
+      setError(data.error || "Something went wrong. Please try again.");
+      setStatus("error");
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+      setStatus("error");
+    }
+  };
+
+  const field =
+    "w-full rounded-xl border border-line bg-white/[0.03] px-3.5 py-2.5 text-[14px] text-fg placeholder:text-muted/70 outline-none transition-colors duration-200 focus:border-primary/60 focus:bg-white/[0.05]";
+
+  if (status === "sent") {
+    return (
+      <div className="flex flex-col items-start gap-3 p-5" role="status">
+        <CircleCheck className="h-8 w-8 text-success" aria-hidden />
+        <div>
+          <p className="font-mono text-base font-semibold text-fg">Message sent — thank you!</p>
+          <p className="mt-1 text-sm text-fg-soft">I&apos;ll get back to you at the email you gave, usually within a day.</p>
+        </div>
+        <button type="button" onClick={() => setStatus("idle")} className="cursor-pointer font-mono text-xs text-primary hover:underline">
+          Send another message
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="grid gap-3 p-4 sm:p-5" noValidate={false}>
+      <div className="flex items-center gap-2">
+        <Send className="h-4 w-4 text-primary" aria-hidden />
+        <h3 className="font-mono text-sm font-semibold">Send me a message</h3>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-1.5">
+          <span className="font-mono text-[11px] tracking-wider text-muted uppercase">Name</span>
+          <input required maxLength={100} autoComplete="name" value={form.name} onChange={set("name")} placeholder="Your name" className={field} />
+        </label>
+        <label className="grid gap-1.5">
+          <span className="font-mono text-[11px] tracking-wider text-muted uppercase">Email</span>
+          <input required type="email" maxLength={200} autoComplete="email" value={form.email} onChange={set("email")} placeholder="you@company.com" className={field} />
+        </label>
+      </div>
+      <label className="grid gap-1.5">
+        <span className="font-mono text-[11px] tracking-wider text-muted uppercase">Message</span>
+        <textarea
+          required
+          minLength={10}
+          maxLength={5000}
+          rows={4}
+          value={form.message}
+          onChange={set("message")}
+          placeholder="Tell me about the role or project…"
+          className={`${field} resize-y`}
+        />
+      </label>
+      {/* Honeypot: hidden from people, bots fill it in */}
+      <input type="text" name="company" tabIndex={-1} autoComplete="off" value={form.company} onChange={set("company")} className="hidden" aria-hidden />
+      {status === "error" && (
+        <p className="flex items-start gap-2 text-sm text-red-300" role="alert">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          {error}
+        </p>
+      )}
+      {status === "mailto" && (
+        <p className="text-sm text-fg-soft" role="status">
+          Your email app should open with the message ready — just press send there.
+        </p>
+      )}
+      <button
+        type="submit"
+        disabled={status === "sending"}
+        className="group inline-flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-primary to-secondary px-6 font-mono text-sm font-semibold text-bg shadow-[0_0_40px_-8px_rgb(167_139_250/0.8)] transition-transform duration-200 hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-70"
+      >
+        {status === "sending" ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
+        {status === "sending" ? "Sending…" : "Send message"}
+      </button>
+    </form>
+  );
+}
 
 function ContactStage() {
   return (
@@ -4909,15 +5094,11 @@ function ContactStage() {
         <span className="glow-text bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">fast.</span>
       </motion.h2>
       <motion.p variants={itemVariants} className="mt-4 leading-relaxed text-fg-soft">
-        Looking for a Senior Frontend Engineer who can own complex React and Next.js products end to end? I&apos;m available to join
-        immediately.
+        Looking for a Senior Frontend Engineer who can own complex React and Next.js products end to end? Send me a message and
+        I&apos;ll get back to you.
       </motion.p>
 
       <motion.ul variants={itemVariants} className="mt-5 space-y-2 text-sm text-fg-soft">
-        <li className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_10px_rgb(34_197_94/0.8)]" />
-          {PROFILE.availability}
-        </li>
         <li className="flex items-start gap-2">
           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
           {PROFILE.location}
@@ -4928,62 +5109,12 @@ function ContactStage() {
         </li>
       </motion.ul>
 
-      <div className="mt-6 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
-        {CONTACT_LINKS.map((c) => {
-          const external = c.href.startsWith("http");
-          return (
-            <TiltCard key={c.label} intensity={10}>
-              <a
-                href={c.href}
-                {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className="flex h-full min-h-[76px] items-center gap-3 p-3.5"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line bg-white/[0.04] text-primary">
-                  <c.icon className="h-[18px] w-[18px]" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block font-mono text-[11px] tracking-wider text-muted uppercase">{c.label}</span>
-                  <span className="block text-[13px] break-all text-fg">{c.value}</span>
-                </span>
-                <ArrowUpRight
-                  className="ml-auto h-4 w-4 shrink-0 text-muted transition-colors duration-200 group-hover:text-primary"
-                  aria-hidden
-                />
-              </a>
-            </TiltCard>
-          );
-        })}
-
-        <TiltCard className="sm:col-span-2 lg:col-span-1 2xl:col-span-2" intensity={4}>
-          <div className="p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Users className="h-4 w-4 text-secondary" aria-hidden />
-              <h3 className="font-mono text-sm font-semibold">Certifications & Education</h3>
-            </div>
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {CREDENTIALS.map((c) => (
-                <li key={c.title} className="flex gap-2.5">
-                  <c.icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
-                  <div>
-                    <p className="text-[13px] leading-snug text-fg">{c.title}</p>
-                    <p className="font-mono text-[11px] text-muted">{c.meta}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+      <div className="mt-6 grid gap-2.5">
+        <TiltCard intensity={3}>
+          <ContactForm />
         </TiltCard>
-      </div>
 
-      <motion.a
-        variants={itemVariants}
-        href={`mailto:${CONTACT.email}`}
-        className="group mt-6 inline-flex min-h-12 w-fit items-center gap-2 rounded-full bg-gradient-to-r from-primary to-secondary px-6 font-mono text-sm font-semibold text-bg shadow-[0_0_40px_-8px_rgb(167_139_250/0.8)] transition-transform duration-200 hover:-translate-y-0.5"
-      >
-        <Mail className="h-4 w-4" aria-hidden />
-        Say hello
-        <ArrowUpRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden />
-      </motion.a>
+      </div>
 
       <motion.p variants={itemVariants} className="mt-5 font-mono text-[11px] text-muted">
         © 2026 {PROFILE.name} · Built with Next.js, TypeScript, Tailwind CSS, Framer Motion & Canvas
