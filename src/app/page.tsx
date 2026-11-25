@@ -37,6 +37,8 @@ import {
   VideoOff,
   Workflow,
   Crosshair,
+  MousePointer2,
+  X,
   Send,
   CircleCheck,
   CircleAlert,
@@ -2747,9 +2749,13 @@ export default function Home() {
     const id = window.setTimeout(() => setGestureIntro(true), 900);
     return () => window.clearTimeout(id);
   }, []);
+  // After "Let's do it": a short animated guide to navigating with the hand.
+  const [guideOpen, setGuideOpen] = useState(false);
+  const closeGuide = useCallback(() => setGuideOpen(false), []);
   const acceptGestures = useCallback(() => {
     setGestureIntro(false);
     setGesturesOn(true);
+    setGuideOpen(true);
   }, []);
   const skipGestures = useCallback(() => setGestureIntro(false), []);
   // Brief "Moved to …" flash whenever a gesture navigates.
@@ -2833,6 +2839,22 @@ export default function Home() {
             : { kind: "globe", variant: "experience" }
           : { kind: "globe", variant: "contact" };
 
+  // Globe screens: a one-time animated tip per mode (hand gestures vs mouse). It closes on ✕, after a while,
+  // or once the visitor destroys a satellite.
+  const hintMode: "gesture" | "mouse" = gesturesOn ? "gesture" : "mouse";
+  const [hintSeen, setHintSeen] = useState({ gesture: false, mouse: false });
+  const showGameHint = scene.kind === "globe" && !hintSeen[hintMode] && !gestureIntro && !guideOpen;
+  const dismissHint = useCallback(() => setHintSeen((h) => ({ ...h, [hintMode]: true })), [hintMode]);
+  useEffect(() => {
+    if (!showGameHint) return;
+    const id = hintMode === "mouse" ? window.setTimeout(dismissHint, 14000) : 0;
+    window.addEventListener(SAT_DESTROYED_EVENT, dismissHint);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener(SAT_DESTROYED_EVENT, dismissHint);
+    };
+  }, [showGameHint, dismissHint, hintMode]);
+
 
   return (
     <>
@@ -2857,6 +2879,7 @@ export default function Home() {
             <ParticleStage scene={scene} />
             <div aria-hidden className="pointer-events-none absolute inset-y-[12%] left-0 hidden w-px bg-gradient-to-b from-transparent via-primary/30 to-transparent lg:block" />
             <SceneCaption scene={scene} gestures={gesturesOn} targetMode={gesturesOn && targetMode} />
+            <AnimatePresence>{showGameHint && hintMode === "mouse" && <GameHint key="mouse" onClose={dismissHint} />}</AnimatePresence>
           </motion.div>
           {/* Keep left text readable over the backdrop on small screens */}
           <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-bg/20 via-bg/60 to-bg/85 lg:hidden" />
@@ -2922,6 +2945,8 @@ export default function Home() {
         <StageCounter active={index} />
       </div>
       <GestureIntroModal open={gestureIntro} onAccept={acceptGestures} onSkip={skipGestures} />
+      <GestureGuideModal open={guideOpen} onClose={closeGuide} />
+      <GestureGameModal open={showGameHint && hintMode === "gesture"} onClose={dismissHint} />
     </>
   );
 }
@@ -3451,7 +3476,7 @@ function HandGestures({
                   </>
                 ) : fist ? (
                   <>
-                    <span className="block truncate text-amber-200">{live.hold < 1 ? (targetMode ? "Exit target" : "Target mode") : targetMode ? "Target mode on" : "Target mode off"}</span>
+                    <span className="block truncate text-amber-200">{live.hold < 1 ? (targetMode ? "Exit game" : "Game mode") : targetMode ? "Game mode on" : "Game mode off"}</span>
                     <span className="block truncate text-muted">{live.hold < 1 ? "Hold the fist…" : "Open your hand"}</span>
                   </>
                 ) : aiming ? (
@@ -3461,7 +3486,7 @@ function HandGestures({
                   </>
                 ) : targetMode ? (
                   <>
-                    <span className="block truncate text-amber-200">Target mode</span>
+                    <span className="block truncate text-amber-200">Game mode</span>
                     <span className="block truncate text-muted">Point · fist to exit</span>
                   </>
                 ) : (
@@ -3472,7 +3497,7 @@ function HandGestures({
                     <span className="block truncate text-muted">
                       {thumbToken
                         ? live.fired === live.fingers ? "Hold to repeat" : "Hold steady…"
-                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : aimMode ? "fist: target mode" : "or thumb ↑ / ↓"}
+                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : aimMode ? "fist: game mode" : "or thumb ↑ / ↓"}
                     </span>
                   </>
                 )}
@@ -3528,6 +3553,1059 @@ function FingersIcon({ count, className = "" }: { count: number; className?: str
       })}
       {count >= 5 && <rect x={-1.7} y={-8.6} width={3.4} height={10.4} rx={1.7} transform="translate(11.4 22.6) rotate(-50)" />}
     </svg>
+  );
+}
+
+/** Ticks 0,1,2,… every `ms` while `on` (for looping infographic animations). */
+function useLoopStep(count: number, ms: number, on: boolean) {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    const id = window.setInterval(() => setStep((s) => (s + 1) % count), ms);
+    return () => window.clearInterval(id);
+  }, [count, ms, on]);
+  return on ? step : 0;
+}
+
+/** Hand pinching: index bends down to meet the thumb. */
+function PinchIcon({ closed, className = "" }: { closed: boolean; className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" fill="currentColor" className={className} aria-hidden>
+      <rect x="12.6" y="25" width="7.8" height="5" rx="2.2" />
+      <rect x="10.4" y="15" width="13" height="12.4" rx="5.2" />
+      {/* folded middle, ring, pinky */}
+      <rect x="14" y="13.2" width="3.3" height="4.6" rx="1.65" />
+      <rect x="17.3" y="13.8" width="3.1" height="4.4" rx="1.55" />
+      <rect x="20.4" y="15.2" width="2.8" height="4" rx="1.4" />
+      {/* thumb */}
+      <motion.rect
+        x={-1.7}
+        y={-9}
+        width={3.4}
+        height={10.6}
+        rx={1.7}
+        initial={false}
+        animate={{ rotate: closed ? -28 : -55 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        style={{ x: 11.6, y: 22.4, originX: "50%", originY: "90%" }}
+      />
+      {/* index */}
+      <motion.rect
+        x={-1.65}
+        y={-11}
+        width={3.3}
+        height={13.5}
+        rx={1.65}
+        initial={false}
+        animate={{ rotate: closed ? -38 : -8 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        style={{ x: 12.4, y: 16.4, originX: "50%", originY: "85%" }}
+      />
+    </svg>
+  );
+}
+
+/** Small satellite glyph for the game hints. */
+function SatGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 40 20" className={className} aria-hidden>
+      <rect x="1" y="5" width="13" height="10" rx="1" fill="rgba(56,189,248,0.85)" stroke="#e0f2fe" strokeWidth="0.8" />
+      <rect x="26" y="5" width="13" height="10" rx="1" fill="rgba(56,189,248,0.85)" stroke="#e0f2fe" strokeWidth="0.8" />
+      <path d="M5.3 5v10M9.6 5v10M30.3 5v10M34.6 5v10" stroke="#e0f2fe" strokeWidth="0.6" />
+      <path d="M14 10h12" stroke="#e0f2fe" strokeWidth="0.8" />
+      <rect x="16" y="6" width="8" height="8" rx="1" fill="#e0f2fe" />
+    </svg>
+  );
+}
+
+/** Explosion burst used in the hint animations. */
+function Burst({ show }: { show: boolean }) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.span key="burst" className="pointer-events-none absolute inset-0" initial={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <motion.span
+            className="absolute top-1/2 left-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,251,235,0.95),rgba(251,146,60,0.6)_45%,transparent_70%)]"
+            initial={{ scale: 0.2, opacity: 1 }}
+            animate={{ scale: 1.6, opacity: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+          />
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+            const a = (i / 8) * Math.PI * 2;
+            return (
+              <motion.span
+                key={i}
+                className={`absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-sm ${i % 2 ? "bg-amber-300" : "bg-sky-200"}`}
+                initial={{ x: 0, y: 0, opacity: 1 }}
+                animate={{ x: Math.cos(a) * 26, y: Math.sin(a) * 26, opacity: 0, rotate: 180 }}
+                transition={{ duration: 0.75, ease: "easeOut" }}
+              />
+            );
+          })}
+        </motion.span>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ─── Storyboard infographics: "You do this" → "The website does this", one step at a time ─── */
+
+type StoryStep = { title: string; you: ReactNode; screen: ReactNode; ms: number };
+
+/** Auto-playing step player with progress, dots, Back / Next, and pause on hover. */
+function Storyboard({ steps, accent = "primary", compact = false }: { steps: StoryStep[]; accent?: "primary" | "amber"; compact?: boolean }) {
+  const reduce = !!useReducedMotion();
+  const [i, setI] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const auto = !reduce && !paused;
+  useEffect(() => {
+    if (!auto) return;
+    const id = window.setTimeout(() => setI((x) => (x + 1) % steps.length), steps[i].ms);
+    return () => window.clearTimeout(id);
+  }, [i, auto, steps]);
+  const step = steps[i];
+  const ac = accent === "amber" ? { text: "text-amber-300", bg: "bg-amber-300", soft: "bg-amber-300/15", border: "border-amber-300/50" } : { text: "text-primary", bg: "bg-primary", soft: "bg-primary/15", border: "border-primary/50" };
+  const go = (d: number) => setI((x) => (x + d + steps.length) % steps.length);
+
+  return (
+    <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}>
+      {/* step title */}
+      <div className="flex items-center gap-2.5">
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-sm font-bold text-bg ${ac.bg}`}>{i + 1}</span>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.p
+            key={i}
+            initial={{ opacity: 0, x: 8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
+            transition={{ duration: 0.2 }}
+            className={`font-mono font-semibold text-fg ${compact ? "text-[14px]" : "text-[17px]"}`}
+            aria-live="polite"
+          >
+            {step.title}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+
+      {/* scene: you → website */}
+      <div className={`mt-3 grid grid-cols-[1fr_auto_1.35fr] items-center gap-2 ${compact ? "h-[132px]" : "h-[172px]"}`}>
+        <div className="flex h-full flex-col">
+          <span className="mb-1 text-center font-mono text-[10px] tracking-[0.18em] text-muted uppercase">You</span>
+          <div className={`relative flex flex-1 items-center justify-center overflow-hidden rounded-2xl border ${ac.border} ${ac.soft}`}>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={i} className="flex h-full w-full items-center justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+                {step.you}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+        <motion.span
+          className={`mt-4 ${ac.text}`}
+          animate={reduce ? undefined : { x: [0, 4, 0] }}
+          transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
+          aria-hidden
+        >
+          <ArrowRight className="h-5 w-5" />
+        </motion.span>
+        <div className="flex h-full flex-col">
+          <span className="mb-1 text-center font-mono text-[10px] tracking-[0.18em] text-muted uppercase">Website</span>
+          <div className="relative flex-1 overflow-hidden rounded-2xl border border-line bg-bg/70">
+            {/* screen bezel + camera dot */}
+            <span className="absolute top-1.5 left-1/2 z-10 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-success shadow-[0_0_6px_rgb(34_197_94/0.9)]" aria-hidden />
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={i} className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+                {step.screen}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
+      {/* controls */}
+      <div className="mt-3 flex items-center gap-2">
+        <button type="button" onClick={() => go(-1)} aria-label="Previous step" className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-line text-fg-soft transition-colors hover:border-white/30 hover:text-fg">
+          <ArrowRight className="h-3.5 w-3.5 rotate-180" aria-hidden />
+        </button>
+        <div className="flex flex-1 items-center gap-1.5">
+          {steps.map((s, k) => (
+            <button
+              key={s.title}
+              type="button"
+              onClick={() => setI(k)}
+              aria-label={`Step ${k + 1}: ${s.title}`}
+              aria-current={k === i}
+              className="relative h-1.5 flex-1 cursor-pointer overflow-hidden rounded-full bg-white/10"
+            >
+              {k < i && <span className={`absolute inset-0 ${ac.bg}`} />}
+              {k === i && (
+                <motion.span
+                  key={`${i}-${auto}`}
+                  className={`absolute inset-y-0 left-0 ${ac.bg}`}
+                  initial={{ width: auto ? "0%" : "100%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: auto ? s.ms / 1000 : 0, ease: "linear" }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+        <button type="button" onClick={() => go(1)} aria-label="Next step" className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-line text-fg-soft transition-colors hover:border-white/30 hover:text-fg">
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A big hand pose with a gentle "hold" ring. */
+function HandPose({ pose, hold = false, label, tone = "text-primary" }: { pose: "open" | "fist" | "point" | "pinch" | "down" | "up" | number; hold?: boolean; label?: string; tone?: string }) {
+  const reduce = !!useReducedMotion();
+  const [closed, setClosed] = useState(false);
+  useEffect(() => {
+    if (pose !== "pinch" || reduce) return;
+    const id = window.setInterval(() => setClosed((c) => !c), 900);
+    return () => window.clearInterval(id);
+  }, [pose, reduce]);
+  const icon =
+    pose === "down" ? <ThumbsDown className="h-14 w-14" /> :
+    pose === "up" ? <ThumbsUp className="h-14 w-14" /> :
+    pose === "pinch" ? <PinchIcon closed={closed || !!reduce} className="h-16 w-16" /> :
+    <FingersIcon count={pose === "open" ? 5 : pose === "fist" ? 0 : pose === "point" ? 1 : pose} className="h-16 w-16" />;
+  return (
+    <div className={`relative flex flex-col items-center ${tone}`}>
+      <motion.span
+        animate={reduce ? undefined : pose === "down" ? { y: [0, 6, 0] } : pose === "up" ? { y: [0, -6, 0] } : pose === "open" ? { rotate: [0, -8, 8, 0] } : { scale: [1, 1.04, 1] }}
+        transition={{ duration: pose === "open" ? 1.4 : 1, repeat: Infinity, ease: "easeInOut" }}
+        className="relative flex items-center justify-center"
+      >
+        {icon}
+        {hold && (
+          <svg viewBox="0 0 100 100" className="pointer-events-none absolute -inset-3 -rotate-90" aria-hidden>
+            <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="3" />
+            <motion.circle
+              cx="50"
+              cy="50"
+              r="46"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              initial={{ pathLength: reduce ? 1 : 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 1.1, ease: "linear", repeat: reduce ? 0 : Infinity, repeatDelay: 0.6 }}
+            />
+          </svg>
+        )}
+      </motion.span>
+      {label && <span className="mt-1.5 rounded-full bg-bg/70 px-2 py-0.5 font-mono text-[11px] font-semibold text-fg">{label}</span>}
+    </div>
+  );
+}
+
+/** Mini globe with an orbiting satellite, used by the game storyboards. */
+function MiniGlobe({ children, badge }: { children?: ReactNode; badge?: ReactNode }) {
+  return (
+    <div className="absolute inset-0">
+      <div className="absolute top-1/2 left-[42%] h-[78%] aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-300/30 bg-[radial-gradient(circle_at_35%_35%,rgba(56,189,248,0.35),rgba(30,64,175,0.25)_55%,rgba(5,7,13,0.6))]">
+        <span className="absolute inset-x-0 top-1/2 h-px bg-sky-200/20" />
+        <span className="absolute inset-y-0 left-1/2 w-px bg-sky-200/20" />
+        <span className="absolute inset-[18%] rounded-full border border-sky-200/15" />
+      </div>
+      {badge && <div className="absolute top-1.5 right-1.5 z-10">{badge}</div>}
+      {children}
+    </div>
+  );
+}
+
+
+/** True once `ms` has passed since mount (each storyboard step remounts, so this restarts per step). */
+function useAfter(ms: number) {
+  const reduce = !!useReducedMotion();
+  const [done, setDone] = useState(reduce);
+  useEffect(() => {
+    if (reduce) return;
+    const id = window.setTimeout(() => setDone(true), ms);
+    return () => window.clearTimeout(id);
+  }, [ms, reduce]);
+  return done;
+}
+
+const HOLD_MS = 1000; // how long the guide "holds" a gesture before the page reacts
+
+/** A tiny browser window showing this site. */
+function MiniBrowser({ children }: { children: ReactNode }) {
+  return (
+    <div className="absolute inset-0 flex flex-col">
+      <div className="flex h-5 shrink-0 items-center gap-1 border-b border-line bg-white/[0.04] px-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-red-400/70" />
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-300/70" />
+        <span className="h-1.5 w-1.5 rounded-full bg-success/70" />
+        <span className="ml-1.5 truncate font-mono text-[8.5px] text-muted">suman-debnath · portfolio</span>
+      </div>
+      <div className="relative flex-1 overflow-hidden">{children}</div>
+    </div>
+  );
+}
+
+/** One page of the mini site: its number, big name and a few content blocks. */
+function MiniPage({ n }: { n: number }) {
+  return (
+    <div className="absolute inset-0 px-2.5 pt-2 pr-6">
+      <p className="font-mono text-[9px] tracking-widest text-primary">PAGE {n}</p>
+      <p className="font-mono text-[15px] leading-tight font-bold text-fg">{GESTURE_TARGETS[n - 1].label}</p>
+      <div className="mt-2 grid grid-cols-2 gap-1.5">
+        {[0, 1, 2, 3].map((k) => (
+          <span key={k} className="h-5 rounded-md border border-line bg-white/[0.05]" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniDots({ active }: { active: number }) {
+  return (
+    <div className="absolute top-1/2 right-2 flex -translate-y-1/2 flex-col gap-1.5">
+      {GESTURE_TARGETS.map((g) => (
+        <span
+          key={g.fingers}
+          className={`h-2 w-2 rounded-full transition-all duration-300 ${g.fingers === active ? "scale-150 bg-primary shadow-[0_0_8px_rgb(34_211_238/0.9)]" : "bg-white/20"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Hand holding a finger count: ring fills ("Hold still…"), then "✓ Done". */
+function HoldFingers({ count }: { count: number }) {
+  const done = useAfter(HOLD_MS);
+  const reduce = !!useReducedMotion();
+  return (
+    <div className="flex flex-col items-center text-primary">
+      <span className="relative flex items-center justify-center">
+        <FingersIcon count={count} className="h-16 w-16" />
+        <svg viewBox="0 0 100 100" className="pointer-events-none absolute -inset-3 -rotate-90" aria-hidden>
+          <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="3" />
+          <motion.circle
+            cx="50"
+            cy="50"
+            r="46"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="4"
+            strokeLinecap="round"
+            initial={{ pathLength: reduce ? 1 : 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: HOLD_MS / 1000, ease: "linear" }}
+          />
+        </svg>
+        <span className="absolute -top-3 -right-4 flex h-7 w-7 items-center justify-center rounded-full border border-primary/60 bg-bg font-mono text-sm font-bold">
+          {count}
+        </span>
+      </span>
+      <span className={`mt-2.5 rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold ${done ? "bg-success/20 text-success" : "bg-bg/70 text-fg"}`}>
+        {done ? "✓ Done" : "Hold still…"}
+      </span>
+    </div>
+  );
+}
+
+/** Page switch on the mini site: starts on `from`, slides to `to` once the hold completes. */
+function PageSwitchScreen({ from, to }: { from: number; to: number }) {
+  const done = useAfter(HOLD_MS);
+  const page = done ? to : from;
+  return (
+    <MiniBrowser>
+      <AnimatePresence initial={false}>
+        <motion.div
+          key={page}
+          className="absolute inset-0"
+          initial={{ x: "100%" }}
+          animate={{ x: 0 }}
+          exit={{ x: "-100%" }}
+          transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <MiniPage n={page} />
+        </motion.div>
+      </AnimatePresence>
+      <MiniDots active={page} />
+      <AnimatePresence>
+        {done && (
+          <motion.span
+            key="opened"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="absolute bottom-1.5 left-1/2 -translate-x-1/2 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 font-mono text-[10px] whitespace-nowrap text-success"
+          >
+            ✓ Opened {GESTURE_TARGETS[to - 1].label}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </MiniBrowser>
+  );
+}
+
+/** A long page that scrolls down (dir 1) or up (dir -1) after the thumb is held, with a moving scrollbar. */
+function ScrollScreen({ dir }: { dir: 1 | -1 }) {
+  const done = useAfter(500);
+  const top = 0, bottom = -56;
+  const y = done ? (dir > 0 ? bottom : top) : dir > 0 ? top : bottom;
+  return (
+    <MiniBrowser>
+      <motion.div className="absolute inset-x-0 top-0 px-2.5 pt-2 pr-6" initial={false} animate={{ y }} transition={{ duration: 1.1, ease: "easeInOut" }}>
+        <p className="font-mono text-[9px] tracking-widest text-primary">PAGE 3</p>
+        <p className="font-mono text-[15px] leading-tight font-bold text-fg">Projects</p>
+        <div className="mt-2 grid gap-1.5">
+          {["Red Belt", "Chirply", "Training", "Legal Will", "More…"].map((t) => (
+            <span key={t} className="flex h-5 items-center rounded-md border border-line bg-white/[0.05] px-1.5 font-mono text-[8.5px] text-fg-soft">
+              {t}
+            </span>
+          ))}
+        </div>
+      </motion.div>
+      {/* scrollbar */}
+      <span className="absolute top-2 right-2 bottom-2 w-1.5 rounded-full bg-white/10" />
+      <motion.span
+        className="absolute right-2 h-8 w-1.5 rounded-full bg-secondary"
+        initial={false}
+        animate={{ top: (done ? dir > 0 : dir < 0) ? "calc(100% - 2.5rem)" : "0.5rem" }}
+        transition={{ duration: 1.1, ease: "easeInOut" }}
+      />
+      <motion.span
+        className="absolute bottom-1.5 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-secondary/40 bg-secondary/15 px-2 py-0.5 font-mono text-[10px] whitespace-nowrap text-secondary"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: done ? 1 : 0 }}
+      >
+        <ChevronDown className={`h-3 w-3 ${dir < 0 ? "rotate-180" : ""}`} aria-hidden />
+        {dir > 0 ? "Scrolling down" : "Scrolling up"}
+      </motion.span>
+    </MiniBrowser>
+  );
+}
+
+const NAV_STEPS: StoryStep[] = [
+  {
+    title: "Raise your hand in front of the camera",
+    ms: 2400,
+    you: <HandPose pose="open" label="Hi!" />,
+    screen: (
+      <MiniBrowser>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+          <motion.span initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.7, type: "spring" }} className="rounded-full border border-success/50 bg-success/15 px-2.5 py-1 font-mono text-[11px] text-success">
+            ✓ Hand found
+          </motion.span>
+          <span className="font-mono text-[10px] text-muted">The camera can see you</span>
+        </div>
+      </MiniBrowser>
+    ),
+  },
+  {
+    title: "Show 2 fingers → go to page 2",
+    ms: 3300,
+    you: <HoldFingers count={2} />,
+    screen: <PageSwitchScreen from={1} to={2} />,
+  },
+  {
+    title: "Show 5 fingers → go to page 5",
+    ms: 3300,
+    you: <HoldFingers count={5} />,
+    screen: <PageSwitchScreen from={2} to={5} />,
+  },
+  {
+    title: "Thumb down → page scrolls down",
+    ms: 3000,
+    you: <HandPose pose="down" label="Thumb down" tone="text-secondary" />,
+    screen: <ScrollScreen dir={1} />,
+  },
+  {
+    title: "Thumb up → page scrolls up",
+    ms: 3000,
+    you: <HandPose pose="up" label="Thumb up" tone="text-secondary" />,
+    screen: <ScrollScreen dir={-1} />,
+  },
+];
+
+/** Always-visible cheat sheet: which finger count opens which page. */
+function FingerCheatSheet() {
+  return (
+    <div className="mt-4 rounded-2xl border border-line bg-white/[0.03] p-2.5">
+      <p className="mb-2 text-center font-mono text-[10px] tracking-[0.18em] text-muted uppercase">Fingers → page</p>
+      <ul className="grid grid-cols-5 gap-1.5">
+        {GESTURE_TARGETS.map((g) => (
+          <li key={g.fingers} className="flex flex-col items-center gap-1 rounded-lg bg-white/[0.03] py-1.5 text-primary">
+            <FingersIcon count={g.fingers} className="h-6 w-6" />
+            <span className="font-mono text-[10.5px] font-bold text-fg">{g.fingers}</span>
+            <span className="text-center font-mono text-[9.5px] leading-tight text-fg-soft">{g.label}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+
+/** Second step after "Let's do it": an animated, step-by-step guide to moving around with your hand. */
+function GestureGuideModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setTimeout(() => closeRef.current?.focus(), 50);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="gesture-guide"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg/60 p-4 backdrop-blur-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gesture-guide-title"
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            className="glass relative w-full max-w-lg overflow-hidden rounded-3xl p-5 sm:p-7"
+          >
+            <div aria-hidden className="pointer-events-none absolute -top-24 -right-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
+            <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
+            <div className="relative">
+              <p className="font-mono text-[11px] tracking-[0.2em] text-primary uppercase">How it works</p>
+              <h2 id="gesture-guide-title" className="mt-1 mb-4 font-mono text-xl font-bold tracking-tight sm:text-2xl">
+                Move around with your hand
+              </h2>
+              <Storyboard steps={NAV_STEPS} />
+              <FingerCheatSheet />
+              <div className="mt-5 flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-center font-mono text-[11px] text-muted sm:text-left">Turn it off anytime, top-right.</p>
+                <button
+                  ref={closeRef}
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex min-h-11 shrink-0 whitespace-nowrap cursor-pointer items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary to-secondary px-6 font-mono text-sm font-semibold text-bg shadow-[0_0_30px_-8px_rgb(167_139_250/0.8)] transition-transform duration-200 hover:-translate-y-0.5"
+                >
+                  Got it, let&apos;s go
+                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Big, detailed satellite illustration for the game pop-up. */
+function BigSatellite({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 160 80" className={className} aria-hidden>
+      <defs>
+        <linearGradient id="bsFoil" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fde68a" />
+          <stop offset="0.5" stopColor="#d4a017" />
+          <stop offset="1" stopColor="#92610a" />
+        </linearGradient>
+        <linearGradient id="bsPanel" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#1e40af" />
+          <stop offset="1" stopColor="#1e3a8a" />
+        </linearGradient>
+      </defs>
+      {/* wings */}
+      {[4, 104].map((x) => (
+        <g key={x}>
+          <rect x={x} y="24" width="52" height="32" rx="2" fill="url(#bsPanel)" stroke="#bae6fd" strokeWidth="1" />
+          {[1, 2, 3].map((k) => (
+            <line key={k} x1={x + k * 13} y1="24" x2={x + k * 13} y2="56" stroke="#93c5fd" strokeOpacity="0.6" strokeWidth="0.8" />
+          ))}
+          <line x1={x} y1="40" x2={x + 52} y2="40" stroke="#93c5fd" strokeOpacity="0.6" strokeWidth="0.8" />
+        </g>
+      ))}
+      <line x1="56" y1="40" x2="104" y2="40" stroke="#e0f2fe" strokeWidth="2" />
+      {/* body */}
+      <rect x="64" y="22" width="32" height="36" rx="4" fill="url(#bsFoil)" stroke="#fef3c7" strokeWidth="1" />
+      <rect x="70" y="44" width="20" height="8" rx="2" fill="#0b1020" />
+      {/* dish */}
+      <line x1="80" y1="22" x2="80" y2="14" stroke="#e0f2fe" strokeWidth="1.5" />
+      <path d="M68 14 Q80 24 92 14 Z" fill="#e0f2fe" stroke="#cbd5e1" strokeWidth="0.8" />
+      <circle cx="80" cy="6" r="1.8" fill="#e0f2fe" />
+      <line x1="72" y1="13" x2="80" y2="6" stroke="#cbd5e1" strokeWidth="0.7" />
+      <line x1="88" y1="13" x2="80" y2="6" stroke="#cbd5e1" strokeWidth="0.7" />
+      {/* blinking light */}
+      <circle cx="90" cy="27" r="2" fill="#f87171">
+        <animate attributeName="opacity" values="1;0.2;1" dur="1.2s" repeatCount="indefinite" />
+      </circle>
+    </svg>
+  );
+}
+
+/** Runs through phases 0..n-1 with the given durations, looping (static last phase when reduced motion). */
+function useTimeline(durations: number[], on: boolean) {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    const id = window.setTimeout(() => setPhase((p) => (p + 1) % durations.length), durations[phase]);
+    return () => window.clearTimeout(id);
+  }, [phase, on, durations]);
+  return phase;
+}
+
+const GAME_PHASES = [2000, 3000, 1100, 900, 1600];
+const FIST_LOAD_MS = 1300; // fist hold in the demo: ring + capsule border fill, then GAME ON
+
+/** Game-mode capsule on the demo laptop. While `loading`, it reads GAME OFF and a border runs around it;
+ *  when the load completes (or when not loading) it reads GAME ON with a soft glow. */
+function GameModeCapsule({ loading }: { loading: boolean }) {
+  const reduce = !!useReducedMotion();
+  const loaded = useAfter(loading ? FIST_LOAD_MS : 0);
+  const on = !loading || loaded || reduce;
+  return (
+    <span className="relative inline-flex h-5 w-[78px] items-center justify-center">
+      <motion.span
+        className={`absolute inset-0 rounded-full border transition-colors duration-300 ${
+          on ? "border-amber-300/70 bg-amber-300/20" : "border-white/15 bg-white/[0.04]"
+        }`}
+        animate={
+          on && !reduce
+            ? { boxShadow: ["0 0 6px rgba(252,211,77,0.35)", "0 0 16px rgba(252,211,77,0.75)", "0 0 6px rgba(252,211,77,0.35)"] }
+            : { boxShadow: "0 0 0 rgba(0,0,0,0)" }
+        }
+        transition={{ duration: 1.6, repeat: on && !reduce ? Infinity : 0 }}
+      />
+      {loading && !on && (
+        <svg className="pointer-events-none absolute inset-0" width="78" height="20" viewBox="0 0 78 20" aria-hidden>
+          <motion.rect
+            x="1"
+            y="1"
+            width="76"
+            height="18"
+            rx="9"
+            fill="none"
+            stroke="#fcd34d"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: FIST_LOAD_MS / 1000, ease: "linear" }}
+          />
+        </svg>
+      )}
+      <span className={`relative font-mono text-[9.5px] font-bold tracking-wide ${on ? "text-amber-100" : "text-muted"}`}>
+        {on ? "GAME ON" : "GAME OFF"}
+      </span>
+    </span>
+  );
+}
+
+/** The demo fist with a ring that fills while it's held. */
+function FistLoading() {
+  const reduce = !!useReducedMotion();
+  return (
+    <span className="relative flex items-center justify-center">
+      <FingersIcon count={0} className="h-16 w-16" />
+      <svg viewBox="0 0 100 100" className="pointer-events-none absolute -inset-4 -rotate-90" aria-hidden>
+        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="3" />
+        <motion.circle
+          cx="50"
+          cy="50"
+          r="46"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="4"
+          strokeLinecap="round"
+          initial={{ pathLength: reduce ? 1 : 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: FIST_LOAD_MS / 1000, ease: "linear" }}
+        />
+      </svg>
+    </span>
+  );
+}
+const GAME_STEPS = [
+  { title: "Make a fist", sub: "Hold it — game mode starts" },
+  { title: "Point your finger", sub: "A target follows your finger" },
+  { title: "Wait for LOCKED", sub: "The target snaps on" },
+  { title: "Pinch", sub: "Thumb + finger together" },
+  { title: "Boom!", sub: "Satellite destroyed" },
+];
+
+/** Gesture-mode game pop-up: a big satellite asks to be destroyed, then a laptop + hand demo shows how. */
+function GestureGameModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const reduce = !!useReducedMotion();
+  const phase = useTimeline(GAME_PHASES, open && !reduce);
+  const p = reduce ? 2 : phase;
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setTimeout(() => closeRef.current?.focus(), 50);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  // Crosshair: starts low-left, glides to the satellite while pointing, sits there once locked.
+  const destroyed = p === 4;
+
+  // Live demo motion: the hand drifts around, the camera "cone" follows it, and the crosshair on the laptop
+  // mirrors the hand — then glides onto the satellite and locks. Driven by rAF + refs (no re-renders).
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
+  const satRef = useRef<HTMLSpanElement>(null);
+  const handRef = useRef<HTMLDivElement>(null);
+  const crossRef = useRef<HTMLSpanElement>(null);
+  const coneRef = useRef<SVGPolygonElement>(null);
+  const edgeA = useRef<SVGLineElement>(null);
+  const edgeB = useRef<SVGLineElement>(null);
+  const phaseStart = useRef(0);
+  useEffect(() => {
+    phaseStart.current = performance.now();
+  }, [p]);
+  useEffect(() => {
+    if (!open) return;
+    let raf = 0;
+    const AIM = { x: 10, y: -16 }; // hand offset when aiming at the satellite
+    const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      const scene = sceneRef.current, screen = screenRef.current, sat = satRef.current;
+      if (!scene || !screen || !sat) return;
+      const W = scene.clientWidth, H = scene.clientHeight;
+      const tau = (now - phaseStart.current) / 1000;
+      const wander = (t: number) => ({ x: 18 * Math.sin((2 * Math.PI * t) / 1.9), y: 11 * Math.sin((2 * Math.PI * t) / 0.95) });
+
+      // Hand offset
+      let hx = 0, hy = 0, k = 0;
+      const wanderFor = GAME_PHASES[1] / 1000 - 1;
+      if (reduce) {
+        if (p >= 1) ({ x: hx, y: hy } = AIM);
+      } else if (p === 0) {
+        hy = Math.sin(tau * 3) * 1.5;
+      } else if (p === 1) {
+        if (tau < wanderFor) ({ x: hx, y: hy } = wander(tau));
+        else {
+          k = ease(Math.min(1, (tau - wanderFor) / 0.9));
+          const w = wander(wanderFor);
+          hx = w.x + (AIM.x - w.x) * k;
+          hy = w.y + (AIM.y - w.y) * k;
+        }
+      } else if (p === 4) {
+        const b = ease(Math.min(1, tau / 1.2));
+        hx = AIM.x * (1 - b);
+        hy = AIM.y * (1 - b);
+      } else {
+        hx = AIM.x;
+        hy = AIM.y;
+      }
+      if (handRef.current) handRef.current.style.transform = `translate(${hx}px, ${hy}px)`;
+
+      // Crosshair on the laptop screen: mirrors the hand while wandering, then glides to the satellite.
+      const sr = screen.getBoundingClientRect(), tr = sat.getBoundingClientRect();
+      const tx = tr.left - sr.left + tr.width / 2, ty = tr.top - sr.top + tr.height / 2;
+      const bx = sr.width * 0.34 + hx * 2.2, by = sr.height * 0.6 + hy * 2.6;
+      let cx = bx, cy = by;
+      if (reduce || p >= 2) {
+        cx = tx;
+        cy = ty;
+      } else if (p === 1 && tau >= wanderFor) {
+        const w = wander(wanderFor);
+        const sx = sr.width * 0.34 + w.x * 2.2, sy = sr.height * 0.6 + w.y * 2.6;
+        cx = sx + (tx - sx) * k;
+        cy = sy + (ty - sy) * k;
+      }
+      if (crossRef.current) {
+        crossRef.current.style.left = `${cx}px`;
+        crossRef.current.style.top = `${cy}px`;
+      }
+
+      // Camera cone: from the webcam to both edges of the hand circle.
+      const camX = W * 0.44, camY = 2;
+      const R = 56;
+      const hcx = W - R + hx, hcy = H - R + hy;
+      const dx = hcx - camX, dy = hcy - camY, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const p1 = [hcx + nx * R, hcy + ny * R], p2 = [hcx - nx * R, hcy - ny * R];
+      coneRef.current?.setAttribute("points", `${camX},${camY} ${p1[0]},${p1[1]} ${p2[0]},${p2[1]}`);
+      for (const [ref, pt] of [[edgeA, p1], [edgeB, p2]] as const) {
+        ref.current?.setAttribute("x1", String(camX));
+        ref.current?.setAttribute("y1", String(camY));
+        ref.current?.setAttribute("x2", String(pt[0]));
+        ref.current?.setAttribute("y2", String(pt[1]));
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [open, p, reduce]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="game-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg/60 p-4 backdrop-blur-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="game-modal-title"
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-amber-300/30 bg-[rgb(12_12_22/0.92)] p-5 shadow-[0_30px_80px_-20px_rgb(0_0_0/0.9)] backdrop-blur-xl sm:p-7"
+          >
+            <div aria-hidden className="pointer-events-none absolute -top-24 -left-16 h-56 w-56 rounded-full bg-amber-300/15 blur-3xl" />
+            <div aria-hidden className="pointer-events-none absolute -right-16 -bottom-24 h-56 w-56 rounded-full bg-sky-400/15 blur-3xl" />
+
+            {/* Hero: the satellite speaks */}
+            <div className="relative flex items-center gap-4">
+              <motion.div
+                className="w-36 shrink-0 sm:w-44"
+                animate={reduce ? undefined : { y: [0, -6, 0], rotate: [-2, 2, -2] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <BigSatellite className="w-full drop-shadow-[0_0_18px_rgba(56,189,248,0.35)]" />
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8, x: -10 }}
+                animate={{ opacity: 1, scale: 1, x: 0 }}
+                transition={{ delay: 0.35, type: "spring", stiffness: 300, damping: 18 }}
+                className="relative rounded-2xl rounded-bl-sm border border-amber-300/40 bg-amber-300/10 px-4 py-3"
+              >
+                <p id="game-modal-title" className="font-mono text-lg leading-tight font-bold text-fg sm:text-xl">
+                  Hey! Want to destroy me?
+                </p>
+                <p className="mt-1 text-sm text-amber-100/80">Use your hand in front of the webcam — here&apos;s how.</p>
+              </motion.div>
+            </div>
+
+            <div className="relative mt-5 grid gap-4 sm:grid-cols-[1.25fr_1fr]">
+              {/* Laptop + hand scene */}
+              <div ref={sceneRef} className="relative h-[210px]">
+                {/* laptop */}
+                <div className="absolute top-0 left-0 h-[170px] w-[88%] rounded-t-xl border-[5px] border-b-0 border-slate-700 bg-bg">
+                  {/* webcam */}
+                  <span className="absolute -top-[4px] left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-success shadow-[0_0_6px_rgb(34_197_94/1)]" />
+                  <div ref={screenRef} className="absolute inset-0 overflow-hidden rounded-t-md">
+                    <MiniGlobe>
+                      <span className="absolute top-2 left-2 z-10">
+                        {/* remounts each loop so the fist load replays */}
+                        <GameModeCapsule key={p === 0 ? "loading" : "on"} loading={p === 0} />
+                      </span>
+                      {/* satellite */}
+                      <span ref={satRef} className="absolute top-[22%] right-[12%] h-7 w-14">
+                        <motion.span className="absolute inset-0" animate={{ opacity: destroyed ? 0 : 1, scale: destroyed ? 0.5 : 1 }} transition={{ duration: 0.15 }}>
+                          <SatGlyph className="w-14" />
+                        </motion.span>
+                        <Burst show={destroyed && !reduce} />
+                      </span>
+                      {/* crosshair (positioned every frame) */}
+                      {p >= 1 && !destroyed && (
+                        <span ref={crossRef} className="absolute z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2" style={{ left: "34%", top: "60%" }}>
+                          <span className="absolute inset-0 rounded-full border-2 border-amber-300 shadow-[0_0_10px_rgb(252_211_77/0.6)]" />
+                          <span className="absolute top-1/2 left-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-200" />
+                        </span>
+                      )}
+                      {/* lock */}
+                      {(p === 2 || p === 3) && (
+                        <>
+                          <motion.span
+                            className="absolute top-[calc(22%-7px)] right-[calc(12%-7px)] h-[42px] w-[70px] rounded-lg border-2 border-red-400"
+                            initial={{ opacity: 0, scale: 1.5 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.25 }}
+                          />
+                          <motion.span
+                            className="absolute top-[calc(22%+38px)] right-[calc(12%-4px)] font-mono text-[10px] font-bold text-red-300"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                          >
+                            LOCKED
+                          </motion.span>
+                        </>
+                      )}
+                      {destroyed && (
+                        <motion.span
+                          className="absolute top-2 right-2 z-10 rounded-full border border-red-400/50 bg-red-500/15 px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-red-200"
+                          initial={{ opacity: 0, scale: 0.6 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.3, type: "spring" }}
+                        >
+                          +1 destroyed
+                        </motion.span>
+                      )}
+                    </MiniGlobe>
+                  </div>
+                </div>
+                {/* laptop base */}
+                <div className="absolute top-[170px] left-[-3%] h-3 w-[94%] rounded-b-xl bg-gradient-to-b from-slate-600 to-slate-800" />
+                {/* camera sight lines to the hand */}
+                <svg className="pointer-events-none absolute inset-0 z-[1] h-full w-full overflow-visible" aria-hidden>
+                  <defs>
+                    <linearGradient id="camCone" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stopColor="rgb(34 197 94)" stopOpacity="0.28" />
+                      <stop offset="1" stopColor="rgb(34 197 94)" stopOpacity="0.06" />
+                    </linearGradient>
+                  </defs>
+                  <polygon ref={coneRef} points="0,0 0,0 0,0" fill="url(#camCone)" />
+                  <line ref={edgeA} stroke="rgb(74 222 128 / 0.55)" strokeWidth="1.2" strokeDasharray="4 4" />
+                  <line ref={edgeB} stroke="rgb(74 222 128 / 0.55)" strokeWidth="1.2" strokeDasharray="4 4" />
+                </svg>
+                {/* the visitor's hand, in front of the laptop */}
+                <div
+                  ref={handRef}
+                  className="absolute right-0 bottom-0 z-[2] flex h-28 w-28 items-center justify-center rounded-full border border-success/50 bg-[rgb(40_26_6/0.8)] text-amber-300 shadow-[0_0_30px_-6px_rgb(34_197_94/0.45)] will-change-transform"
+                >
+                  {p === 0 ? (
+                    <FistLoading />
+                  ) : p >= 3 ? (
+                    <PinchIcon closed className="h-16 w-16" />
+                  ) : (
+                    <FingersIcon count={1} className="h-16 w-16" />
+                  )}
+                  <span className="absolute -bottom-2 rounded-full bg-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold text-amber-100">You</span>
+                </div>
+              </div>
+
+              {/* Steps */}
+              <ol className="grid content-center gap-1.5">
+                {GAME_STEPS.map((st, i) => {
+                  const on = p === i;
+                  return (
+                    <li
+                      key={st.title}
+                      className={`flex items-center gap-3 rounded-xl border px-3 py-1.5 transition-all duration-300 ${
+                        on ? "translate-x-1 border-amber-300/60 bg-amber-300/10" : "border-transparent"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold ${
+                          on ? "bg-amber-300 text-bg" : i < p ? "bg-amber-300/30 text-amber-100" : "bg-white/10 text-muted"
+                        }`}
+                      >
+                        {i < p ? "✓" : i + 1}
+                      </span>
+                      <span>
+                        <span className={`block font-mono text-[13px] font-semibold ${on ? "text-amber-100" : "text-fg"}`}>{st.title}</span>
+                        <span className="block text-[11.5px] text-muted">{st.sub}</span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+
+            <div className="relative mt-5 flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-center font-mono text-[11px] text-muted sm:text-left">Fist again to stop playing · or just double-click a satellite</p>
+              <button
+                ref={closeRef}
+                type="button"
+                onClick={onClose}
+                className="inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-gradient-to-r from-amber-300 to-orange-400 px-6 font-mono text-sm font-semibold whitespace-nowrap text-bg shadow-[0_0_30px_-8px_rgb(252_211_77/0.8)] transition-transform duration-200 hover:-translate-y-0.5"
+              >
+                <Crosshair className="h-4 w-4" aria-hidden />
+                Let&apos;s play
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Mouse version of the game tip: a cursor glides to a satellite, double-clicks, and it explodes. */
+function MouseGameDemo() {
+  const reduce = !!useReducedMotion();
+  const step = useLoopStep(4, 1100, !reduce);
+  return (
+    <>
+      <p className="font-mono text-[15px] font-semibold text-fg">Double-click a satellite to destroy it</p>
+      <div className="relative mt-3 flex h-24 items-center justify-center overflow-hidden rounded-xl border border-line bg-[radial-gradient(circle_at_50%_120%,rgba(56,189,248,0.18),transparent_60%)]">
+        <span className="relative h-8 w-16">
+          <motion.span
+            className="absolute inset-0"
+            initial={false}
+            animate={{ opacity: step === 3 ? 0 : 1, scale: step === 3 ? 0.6 : 1 }}
+            transition={{ duration: 0.2 }}
+          >
+            <SatGlyph className="w-16" />
+          </motion.span>
+          <Burst show={step === 3 && !reduce} />
+          {(step === 1 || step === 2) && (
+            <motion.span
+              key={`rip-${step}`}
+              className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-300"
+              initial={{ scale: 0.4, opacity: 1 }}
+              animate={{ scale: 1.8, opacity: 0 }}
+              transition={{ duration: 0.5 }}
+            />
+          )}
+        </span>
+        <motion.span
+          className="absolute"
+          initial={false}
+          animate={step === 0 && !reduce ? { x: [-70, 4], y: [34, 6] } : { x: 4, y: 6 }}
+          transition={{ duration: 0.9, ease: "easeOut" }}
+        >
+          <MousePointer2 className="h-5 w-5 fill-white text-bg" aria-hidden />
+        </motion.span>
+        <span className="absolute top-2 left-3 font-mono text-[10.5px] text-amber-200/90">
+          {step === 0 ? "aim…" : step === 3 ? "boom!" : "click ×2"}
+        </span>
+      </div>
+      <p className="mt-2.5 text-center font-mono text-[11px] text-fg-soft">A rocket launches a new one from behind the globe</p>
+    </>
+  );
+}
+
+/**
+ * Globe-screen game hint (right panel): a short storyboard. Gesture mode: fist → point → pinch → rocket → fist.
+ * Mouse: hover → double-click → rocket.
+ */
+function GameHint({ onClose }: { onClose: () => void }) {
+  return (
+    <motion.div
+      role="dialog"
+      aria-label="How to play with the mouse"
+      initial={{ opacity: 0, y: 16, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 12, scale: 0.97 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="pointer-events-auto absolute bottom-16 left-1/2 z-20 hidden w-[min(380px,90%)] -translate-x-1/2 overflow-hidden rounded-2xl border border-amber-300/30 bg-[rgb(14_12_20/0.88)] p-4 shadow-[0_20px_60px_-20px_rgb(0_0_0/0.8)] backdrop-blur-xl lg:block"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close tip"
+        className="absolute top-2.5 right-2.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-white/10 hover:text-fg"
+      >
+        <X className="h-3.5 w-3.5" aria-hidden />
+      </button>
+      <p className="mb-3 flex items-center gap-2 font-mono text-[11px] tracking-[0.18em] text-amber-300 uppercase">
+        <Crosshair className="h-3.5 w-3.5" aria-hidden />
+        Mini-game · with your mouse
+      </p>
+      <MouseGameDemo />
+    </motion.div>
   );
 }
 
@@ -3636,7 +4714,7 @@ function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept
               <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.04] px-2.5 py-2">
                 <Crosshair className="h-5 w-5 shrink-0 text-amber-300" aria-hidden />
                 <span className="font-mono text-[10px] leading-tight text-fg-soft">
-                  <span className="block text-fg">On the globe: hold a fist for target mode</span>
+                  <span className="block text-fg">On the globe: hold a fist for game mode</span>
                   Point to aim, pinch to destroy · fist again to exit
                 </span>
               </div>
@@ -4110,7 +5188,7 @@ function SceneCaption({ scene, gestures = false, targetMode = false }: { scene: 
             </span>
             <span className="hidden text-amber-300 2xl:inline">Mini-game</span>
             {gestures ? (
-              // Hand gestures on: both ways work — double-click, or fist (target mode) → aim → pinch.
+              // Hand gestures on: both ways work — double-click, or fist (game mode) → aim → pinch.
               <span>
                 <span className="xl:hidden">Double-click / pinch</span>
                 <span className="hidden xl:inline 2xl:hidden">Double-click, or fist → aim → pinch</span>
@@ -4140,14 +5218,14 @@ function SceneCaption({ scene, gestures = false, targetMode = false }: { scene: 
             <Hand className={`h-3.5 w-3.5 ${targetMode ? "text-amber-300" : "text-muted"}`} aria-hidden />
             {targetMode ? (
               <span>
-                <span className="text-amber-300">Target mode on</span>
+                <span className="text-amber-300">Game mode on</span>
                 <span className="hidden xl:inline"> · hold a fist again to exit</span>
                 <span className="xl:hidden"> · fist to exit</span>
               </span>
             ) : (
               <span>
-                <span className="hidden xl:inline">Hold a fist to start target mode</span>
-                <span className="xl:hidden">Hold a fist: target mode</span>
+                <span className="hidden xl:inline">Hold a fist to start game mode</span>
+                <span className="xl:hidden">Hold a fist: game mode</span>
               </span>
             )}
           </motion.div>
