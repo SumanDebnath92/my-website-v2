@@ -5800,32 +5800,7 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
         <span className="text-fg-soft">{PROFILE.specialty}</span>
       </motion.p>
 
-      <motion.p variants={itemVariants} className="mt-3 text-[15px] leading-[1.55] text-fg-soft">
-        {PROFILE.bio}
-      </motion.p>
-
-      <CareerPath />
-
-      <motion.div variants={itemVariants} className="mt-5 flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={() => onNavigate(2)}
-          className="group inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-primary to-sky-400 px-5 font-mono text-sm font-semibold text-bg shadow-[0_0_30px_-6px_rgb(34_211_238/0.7)] transition-transform duration-200 hover:-translate-y-0.5"
-        >
-          View my work
-          <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate(3)}
-          className="glass inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full px-5 font-mono text-sm text-fg transition-colors duration-200 hover:border-primary/40"
-        >
-          <Send className="h-4 w-4" />
-          Send a message
-        </button>
-      </motion.div>
-
-      <motion.ul variants={itemVariants} aria-label="Contact" className="mt-3 flex flex-wrap gap-2 sm:flex-nowrap">
+      <motion.ul variants={itemVariants} aria-label="Contact" className="mt-4 flex flex-wrap gap-2 sm:flex-nowrap">
         {CONTACT_LINKS.map((c) => {
           const external = c.href.startsWith("http");
           return (
@@ -5846,7 +5821,13 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
         })}
       </motion.ul>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <motion.p variants={itemVariants} className="mt-5 text-[15px] leading-[1.55] text-fg-soft">
+        {PROFILE.bio}
+      </motion.p>
+
+      <CareerPath />
+
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {STATS.map((s, i) => (
           <TiltCard key={s.label} intensity={12}>
             <div className="px-3.5 py-2.5">
@@ -5856,6 +5837,25 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
           </TiltCard>
         ))}
       </div>
+
+      <motion.div variants={itemVariants} className="mt-6 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => onNavigate(2)}
+          className="group inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-primary to-sky-400 px-5 font-mono text-sm font-semibold text-bg shadow-[0_0_30px_-6px_rgb(34_211_238/0.7)] transition-transform duration-200 hover:-translate-y-0.5"
+        >
+          View my work
+          <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onNavigate(3)}
+          className="glass inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full px-5 font-mono text-sm text-fg transition-colors duration-200 hover:border-primary/40"
+        >
+          <Send className="h-4 w-4" />
+          Send a message
+        </button>
+      </motion.div>
     </div>
   );
 }
