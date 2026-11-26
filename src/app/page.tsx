@@ -2714,13 +2714,36 @@ function useStageController() {
   return { ...state, progress: scrollYProgress };
 }
 
+/**
+ * After looping from the last page back to the first, trackpads / fast wheels keep sending "momentum" scroll
+ * events for a second or two. Swallow them until they stop, so the page stays on page 1.
+ */
+const wrapSettle = { until: 0, hardStop: 0 };
+function startWrapSettle() {
+  const now = performance.now();
+  wrapSettle.until = now + 400;
+  wrapSettle.hardStop = now + 3000;
+}
+if (typeof window !== "undefined") {
+  const swallow = (e: Event) => {
+    const now = performance.now();
+    if (now >= wrapSettle.until || now >= wrapSettle.hardStop) return;
+    // Still moving: keep blocking until the momentum has been quiet for a moment.
+    wrapSettle.until = Math.min(wrapSettle.hardStop, now + 250);
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  window.addEventListener("wheel", swallow, { capture: true, passive: false });
+  window.addEventListener("touchmove", swallow, { capture: true, passive: false });
+}
+
 function useGoToStage() {
   const reduce = useReducedMotion();
   return useCallback(
-    (i: number) => {
+    (i: number, instant = false) => {
       const target = document.getElementById(`track-${STAGES[i].id}`);
       if (!target) return;
-      window.scrollTo({ top: target.offsetTop, behavior: reduce ? "instant" : "smooth" });
+      window.scrollTo({ top: target.offsetTop, behavior: reduce || instant ? "instant" : "smooth" });
     },
     [reduce],
   );
@@ -2741,6 +2764,69 @@ export default function Home() {
   const [activeProject, setActiveProject] = useState(0);
   const [workTab, setWorkTab] = useState<WorkTab>("projects");
   const [hasMore, setHasMore] = useState(false);
+
+  // Loop: scrolling on past the end of the last page jumps straight back to the first (instant, so it doesn't
+  // flash through the pages in between). Same "pause at the end, then scroll again" rule as the stage scroller.
+  // The wheel event that triggers the jump is cancelled, and the momentum after it is swallowed — otherwise that
+  // leftover scroll would nudge the page and scroll-snap would land on page 2.
+  useEffect(() => {
+    if (index !== STAGE_COUNT - 1) return;
+    let armed = false;
+    let lastWheel = 0;
+    let lockUntil = performance.now() + 700; // ignore the momentum that brought us here
+    let touchY = 0;
+    const panel = () => document.getElementById("stage-scroll");
+    const atEnd = () => {
+      const sc = panel();
+      const panelDone = !sc || sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 3;
+      return panelDone && window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
+    };
+    const wrap = () => {
+      lockUntil = performance.now() + 1100;
+      armed = false;
+      startWrapSettle();
+      goTo(0, true);
+    };
+    const onWheel = (e: WheelEvent) => {
+      const now = performance.now();
+      const gap = now - lastWheel;
+      lastWheel = now;
+      if (e.deltaY <= 0 || now < lockUntil || !atEnd()) {
+        if (e.deltaY <= 0) armed = false;
+        return;
+      }
+      if (armed && gap > 180) {
+        e.preventDefault();
+        e.stopPropagation();
+        wrap();
+      } else armed = true;
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      touchY = e.touches[0].clientY;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (performance.now() < lockUntil || !atEnd()) return;
+      if (touchY - e.changedTouches[0].clientY > 60) wrap();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!["ArrowDown", "PageDown", " "].includes(e.key)) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(el.tagName))) return;
+      if (performance.now() < lockUntil || !atEnd()) return;
+      e.preventDefault();
+      wrap();
+    };
+    window.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("wheel", onWheel, { capture: true });
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [index, goTo]);
 
   // Hand-gesture navigation: invite on load, toggle anytime from the header.
   const [gesturesOn, setGesturesOn] = useState(false);
