@@ -1157,7 +1157,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
 
     const img = new Image();
     img.decoding = "async";
-    img.src = "/profile.png";
+    img.src = "/profile.webp"; // 340px source is plenty for ≤170 sample columns (25 KB instead of 448 KB)
     img.onload = () => {
       portrait = samplePortrait(img, PORTRAIT_COLS);
       if (sceneRef.current.kind === "portrait") remodel(true);
@@ -2510,6 +2510,12 @@ function ParticleStage({ scene }: { scene: Scene }) {
       // this halves the canvas work while scrolling, page changes and taps stay at full frame rate.
       // (Not while aiming with the hand: the crosshair needs every frame to feel responsive.)
       if (compact && !handAim.active && now - last < 28) return;
+      // Phones: pause while the text panel is being swipe-scrolled — both run on the same thread, and the
+      // scroll should win. The settled particles barely move, so the pause isn't noticeable.
+      if (compact && touchScroll.active) {
+        last = now;
+        return;
+      }
       const dt = Math.min(2.5, (now - last) / 16.67);
       last = now;
       if (w < 10 || h < 10) return;
@@ -2550,6 +2556,9 @@ function ParticleStage({ scene }: { scene: Scene }) {
       const flowAmp = still ? 0 : 0.5 * energy + 0.025;
       const nowMs = now;
       const R2 = 110 * 110;
+      // Same for every particle of a kind: work these out once per frame, not 5,600 times.
+      const dampTarget = Math.pow(0.84, dt);
+      const dampFree = Math.pow(0.95, dt);
 
       for (let i = 0; i < N; i++) {
         let x = px[i], y = py[i];
@@ -2586,7 +2595,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
         } else {
           vx[i] += Math.cos(ang) * 0.015 * dt;
           vy[i] += Math.sin(ang) * 0.015 * dt - 0.00075 * dt;
-          const sp = Math.hypot(vx[i], vy[i]);
+          const sp = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i]);
           if (sp > 0.45) {
             vx[i] *= 0.45 / sp;
             vy[i] *= 0.45 / sp;
@@ -2619,7 +2628,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
           }
         }
 
-        const damp = Math.pow(i < m.count ? 0.84 : 0.95, dt);
+        const damp = i < m.count ? dampTarget : dampFree;
         vx[i] *= damp;
         vy[i] *= damp;
         x += vx[i] * dt;
@@ -2674,8 +2683,15 @@ function ParticleStage({ scene }: { scene: Scene }) {
             ctx.beginPath();
           }
           const r = drawS[i];
-          ctx.moveTo(px[i] + r, py[i]);
-          ctx.arc(px[i], py[i], r, 0, Math.PI * 2);
+          if (compact) {
+            // Phones / tablets: a square with the same area as the dot. At 2–3 screen pixels it looks the same,
+            // and it is far cheaper to draw than thousands of round paths per frame.
+            const side = r * 1.7725; // √π · r
+            ctx.rect(px[i] - side / 2, py[i] - side / 2, side, side);
+          } else {
+            ctx.moveTo(px[i] + r, py[i]);
+            ctx.arc(px[i], py[i], r, 0, Math.PI * 2);
+          }
         }
         if (cur >= 0) ctx.fill();
       } else {
@@ -3293,6 +3309,8 @@ const FIST_HOLD_MS = 500;
  * React re-renders. x / y are 0–1 across the globe panel; `fire` counts pinches.
  */
 const handAim = { active: false, x: 0.5, y: 0.5, fire: 0, at: 0 };
+/** Phones: true while the visitor is swipe-scrolling the text panel (the particles pause so scrolling stays smooth). */
+const touchScroll = { active: false };
 const AIM_DETECT_INTERVAL_MS = 33; // ~30 detections per second while aiming
 
 /** One Euro filter: smooths jitter when the hand is still, stays responsive when it moves fast. */
@@ -5332,14 +5350,18 @@ function StageScroller({
     setMore(of && remaining > 8);
 
     // Soft edge fades instead of a hard cut: grow with distance scrolled / distance remaining.
-    const top = of ? Math.min(56, el.scrollTop) : 0;
-    const bottom = of ? Math.min(80, Math.max(0, remaining)) : 0;
+    const top = of ? Math.round(Math.min(56, el.scrollTop)) : 0;
+    const bottom = of ? Math.round(Math.min(80, Math.max(0, remaining))) : 0;
     const mask =
       top || bottom
         ? `linear-gradient(to bottom, transparent 0, #000 ${top}px, #000 calc(100% - ${bottom}px), transparent 100%)`
         : "none";
-    el.style.maskImage = mask;
-    el.style.webkitMaskImage = mask;
+    // Only touch the mask when it changes: a new mask repaints the whole panel (costly on phones mid-scroll).
+    if (el.dataset.mask !== mask) {
+      el.dataset.mask = mask;
+      el.style.maskImage = mask;
+      el.style.webkitMaskImage = mask;
+    }
 
     // Capsule position on the divider rail.
     const track = trackRef.current;
@@ -5481,6 +5503,7 @@ function StageScroller({
     };
     const onStart = (e: TouchEvent) => {
       stop();
+      touchScroll.active = false; // a new touch ends any coasting; it's set again once this swipe scrolls
       if (e.touches.length !== 1) {
         own = false;
         return;
@@ -5512,6 +5535,7 @@ function StageScroller({
         }
       }
       e.preventDefault();
+      touchScroll.active = true;
       const now = performance.now();
       el.scrollTop += dy;
       const dt = Math.max(1, now - lastT);
@@ -5520,15 +5544,23 @@ function StageScroller({
       lastT = now;
     };
     const onEnd = () => {
-      if (!own || !decided) return;
+      if (!own || !decided) {
+        touchScroll.active = false;
+        return;
+      }
       own = false;
-      if (performance.now() - lastT > 80) return; // finger had stopped: no coast
+      if (performance.now() - lastT > 80) {
+        touchScroll.active = false; // finger had stopped: no coast
+        return;
+      }
       let v = vel * 16; // px per frame
       const step = () => {
         const before = el.scrollTop;
         el.scrollTop += v;
         v *= 0.95;
-        raf = Math.abs(v) > 0.4 && el.scrollTop !== before ? requestAnimationFrame(step) : 0;
+        const more = Math.abs(v) > 0.4 && el.scrollTop !== before;
+        raf = more ? requestAnimationFrame(step) : 0;
+        if (!more) touchScroll.active = false;
       };
       raf = requestAnimationFrame(step);
     };
@@ -5538,6 +5570,7 @@ function StageScroller({
     el.addEventListener("touchcancel", onEnd, { passive: true });
     return () => {
       stop();
+      touchScroll.active = false;
       el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchmove", onMove);
       el.removeEventListener("touchend", onEnd);
@@ -5686,8 +5719,11 @@ const ORB_SOFT = "max-lg:[mask-image:radial-gradient(closest-side,#000,transpare
 
 function AmbientBackdrop({ progress, stage }: { progress: MotionValue<number>; stage: number }) {
   const reduce = useReducedMotion();
+  // Phones / tablets: no scroll parallax on the background glow and floor grid. Repainting the large
+  // perspective grid on every scroll frame was a big cost on phones; the stage itself still slides.
+  const compact = useCompactUI();
   const p = useSpring(progress, { stiffness: 60, damping: 20 });
-  const k = reduce ? 0 : 1;
+  const k = reduce || compact ? 0 : 1;
 
   const nearY = useTransform(p, [0, 1], [0, -320 * k]);
   const nearX = useTransform(p, [0, 1], [0, 180 * k]);
@@ -5760,6 +5796,9 @@ const NEBULAE = [
 /** Hero (portrait) shows the smoke at full strength; other stages keep it calmer and fainter. */
 function NebulaSmoke({ vivid }: { vivid: boolean }) {
   const reduce = useReducedMotion();
+  // Phones / tablets: hold the smoke still. Its drift is very slow (2–3 min per loop), so it isn't missed,
+  // and four large moving layers are real work for a phone every frame.
+  const still = useCompactUI();
   return (
     <motion.div
       aria-hidden
@@ -5773,7 +5812,7 @@ function NebulaSmoke({ vivid }: { vivid: boolean }) {
           key={i}
           className={`absolute rounded-[50%] lg:blur-[70px] ${n.cls}`}
           style={{ background: `radial-gradient(closest-side, ${n.c}, transparent)` }}
-          animate={reduce ? undefined : { x: n.x, y: n.y, scale: [1, 1.15, 0.95, 1], rotate: [0, 25, -15, 0] }}
+          animate={reduce || still ? undefined : { x: n.x, y: n.y, scale: [1, 1.15, 0.95, 1], rotate: [0, 25, -15, 0] }}
           transition={{ duration: n.d, repeat: Infinity, ease: "easeInOut" }}
         />
       ))}

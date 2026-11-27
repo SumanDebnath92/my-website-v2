@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
+import { preload } from "react-dom";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -26,6 +27,8 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  // The particle portrait is drawn from this image: start fetching it with the HTML, not after the scripts load.
+  preload("/profile.webp", { as: "image", type: "image/webp", fetchPriority: "high" });
   return (
     <html
       lang="en"
