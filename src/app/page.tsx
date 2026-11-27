@@ -2929,7 +2929,8 @@ export default function Home() {
   // Globe screens: a one-time animated tip per mode (hand gestures vs mouse). It closes on ✕, after a while,
   // or once the visitor destroys a satellite.
   const hintMode: "gesture" | "mouse" = gesturesOn ? "gesture" : "mouse";
-  const [hintSeen, setHintSeen] = useState({ gesture: false, mouse: false });
+  // Game guides open only from the "Let's play!" button or the "?" icon — never automatically.
+  const [hintSeen, setHintSeen] = useState({ gesture: true, mouse: true });
   const showGameHint = scene.kind === "globe" && !hintSeen[hintMode] && !gestureIntro && !guideOpen;
   const dismissHint = useCallback(() => setHintSeen((h) => ({ ...h, [hintMode]: true })), [hintMode]);
   const replayHint = useCallback(() => setHintSeen((h) => ({ ...h, [hintMode]: false })), [hintMode]);
@@ -3085,7 +3086,7 @@ const THUMB_REPEAT_MS = 950; // …then it repeats at this pace while held
 const TOKEN_THUMB_UP = 101; // back / scroll up
 const TOKEN_THUMB_DOWN = 102; // next / scroll down
 const TOKEN_AIM = 103; // target mode: index finger aims at satellites, pinch fires
-const TOKEN_FIST = 104; // globe screens: hold a fist to switch target mode on / off
+const TOKEN_FIST = 104; // game mode only: hold a fist to exit
 const FIST_HOLD_MS = 500;
 
 /**
@@ -3308,7 +3309,8 @@ function HandGestures({
                 setTargetMode(false);
               }
               // Fist (globe screens only): held, it switches target mode on / off.
-              if (aimModeRef.current && count === 0 && !thumb) n = TOKEN_FIST;
+              // A held fist only EXITS game mode; starting is done with the "Let's play" button.
+              if (targetOn && aimModeRef.current && count === 0 && !thumb) n = TOKEN_FIST;
               // Target mode: index out (or pinching) with the other three fingers folded aims; anything else is ignored.
               const size = Math.hypot((hand[0].x - hand[9].x) * aspect, hand[0].y - hand[9].y) || 1e-3;
               const gap = Math.hypot((hand[4].x - hand[8].x) * aspect, hand[4].y - hand[8].y) / size;
@@ -3367,8 +3369,9 @@ function HandGestures({
             } else if (n === TOKEN_FIST) {
               if (fistArmed && now - since >= FIST_HOLD_MS) {
                 fistArmed = false;
-                targetOn = !targetOn;
-                setTargetMode(targetOn);
+                targetOn = false;
+                handAim.active = false;
+                setTargetMode(false);
                 fired = 0;
               }
             } else if (n >= 100) {
@@ -3608,7 +3611,7 @@ function HandGestures({
                   </>
                 ) : fist ? (
                   <>
-                    <span className="block truncate text-amber-200">{live.hold < 1 ? (targetMode ? "Exit game" : "Game mode") : targetMode ? "Game mode on" : "Game mode off"}</span>
+                    <span className="block truncate text-amber-200">{live.hold < 1 ? "Exit game" : "Game mode off"}</span>
                     <span className="block truncate text-muted">{live.hold < 1 ? "Hold the fist…" : "Open your hand"}</span>
                   </>
                 ) : aiming ? (
@@ -3629,7 +3632,7 @@ function HandGestures({
                     <span className="block truncate text-muted">
                       {thumbToken
                         ? live.fired === live.fingers ? "Hold to repeat" : "Hold steady…"
-                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : aimMode ? "fist: game mode" : "or thumb ↑ / ↓"}
+                        : target ? (live.fired === live.fingers ? "You're here" : "Hold steady…") : aimMode ? "or play the game" : "or thumb ↑ / ↓"}
                     </span>
                   </>
                 )}
@@ -4348,14 +4351,14 @@ function useTimeline(durations: number[], on: boolean) {
   return phase;
 }
 
-const GAME_PHASES = [2000, 3000, 1100, 900, 1600];
-const FIST_LOAD_MS = 1300; // fist hold in the demo: ring + capsule border fill, then GAME ON
-
+const GAME_PHASES = [0, 3000, 1100, 900, 1600]; // indexed by demo phase p (1–4)
+const DEMO_PHASES = GAME_PHASES.slice(1);
+const FIST_LOAD_MS = 1300; // default capsule "turning on" time in the demo
 /** Game-mode capsule on the demo laptop. While `loading`, it reads GAME OFF and a border runs around it;
  *  when the load completes (or when not loading) it reads GAME ON with a soft glow. */
-function GameModeCapsule({ loading }: { loading: boolean }) {
+function GameModeCapsule({ loading, ms = FIST_LOAD_MS }: { loading: boolean; ms?: number }) {
   const reduce = !!useReducedMotion();
-  const loaded = useAfter(loading ? FIST_LOAD_MS : 0);
+  const loaded = useAfter(loading ? ms : 0);
   const on = !loading || loaded || reduce;
   return (
     <span className="relative inline-flex h-5 w-[78px] items-center justify-center">
@@ -4384,7 +4387,7 @@ function GameModeCapsule({ loading }: { loading: boolean }) {
             strokeLinecap="round"
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
-            transition={{ duration: FIST_LOAD_MS / 1000, ease: "linear" }}
+            transition={{ duration: ms / 1000, ease: "linear" }}
           />
         </svg>
       )}
@@ -4395,32 +4398,7 @@ function GameModeCapsule({ loading }: { loading: boolean }) {
   );
 }
 
-/** The demo fist with a ring that fills while it's held. */
-function FistLoading() {
-  const reduce = !!useReducedMotion();
-  return (
-    <span className="relative flex items-center justify-center">
-      <FingersIcon count={0} className="h-16 w-16" />
-      <svg viewBox="0 0 100 100" className="pointer-events-none absolute -inset-4 -rotate-90" aria-hidden>
-        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="3" />
-        <motion.circle
-          cx="50"
-          cy="50"
-          r="46"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="4"
-          strokeLinecap="round"
-          initial={{ pathLength: reduce ? 1 : 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: FIST_LOAD_MS / 1000, ease: "linear" }}
-        />
-      </svg>
-    </span>
-  );
-}
 const GAME_STEPS = [
-  { title: "Make a fist", sub: "Hold it — game mode starts" },
   { title: "Point your finger", sub: "A target follows your finger" },
   { title: "Wait for LOCKED", sub: "The target snaps on" },
   { title: "Pinch", sub: "Thumb + finger together" },
@@ -4440,8 +4418,8 @@ function GestureGameModal({
   onPlay: () => void;
 }) {
   const reduce = !!useReducedMotion();
-  const phase = useTimeline(GAME_PHASES, open && !reduce);
-  const p = reduce ? 2 : phase;
+  const phase = useTimeline(DEMO_PHASES, open && !reduce);
+  const p = reduce ? 2 : phase + 1; // 1 point · 2 locked · 3 pinch · 4 boom
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -4603,8 +4581,7 @@ function GestureGameModal({
                   <div ref={screenRef} className="absolute inset-0 overflow-hidden rounded-t-md">
                     <MiniGlobe>
                       <span className="absolute top-2 left-2 z-10">
-                        {/* remounts each loop so the fist load replays */}
-                        <GameModeCapsule key={p === 0 ? "loading" : "on"} loading={p === 0} />
+                        <GameModeCapsule loading={false} />
                       </span>
                       {/* satellite */}
                       <span ref={satRef} className="absolute top-[22%] right-[12%] h-7 w-14">
@@ -4670,9 +4647,7 @@ function GestureGameModal({
                   ref={handRef}
                   className="absolute right-0 bottom-0 z-[2] flex h-28 w-28 items-center justify-center rounded-full border border-success/50 bg-[rgb(40_26_6/0.8)] text-amber-300 shadow-[0_0_30px_-6px_rgb(34_197_94/0.45)] will-change-transform"
                 >
-                  {p === 0 ? (
-                    <FistLoading />
-                  ) : p >= 3 ? (
+                  {p >= 3 ? (
                     <PinchIcon closed className="h-16 w-16" />
                   ) : (
                     <FingersIcon count={1} className="h-16 w-16" />
@@ -4684,7 +4659,7 @@ function GestureGameModal({
               {/* Steps */}
               <ol className="grid content-center gap-1.5">
                 {GAME_STEPS.map((st, i) => {
-                  const on = p === i;
+                  const on = p - 1 === i;
                   return (
                     <li
                       key={st.title}
@@ -4694,10 +4669,10 @@ function GestureGameModal({
                     >
                       <span
                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold ${
-                          on ? "bg-amber-300 text-bg" : i < p ? "bg-amber-300/30 text-amber-100" : "bg-white/10 text-muted"
+                          on ? "bg-amber-300 text-bg" : i < p - 1 ? "bg-amber-300/30 text-amber-100" : "bg-white/10 text-muted"
                         }`}
                       >
-                        {i < p ? "✓" : i + 1}
+                        {i < p - 1 ? "✓" : i + 1}
                       </span>
                       <span>
                         <span className={`block font-mono text-[13px] font-semibold ${on ? "text-amber-100" : "text-fg"}`}>{st.title}</span>
@@ -4936,8 +4911,8 @@ function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept
               <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.04] px-2.5 py-2">
                 <Crosshair className="h-5 w-5 shrink-0 text-amber-300" aria-hidden />
                 <span className="font-mono text-[10px] leading-tight text-fg-soft">
-                  <span className="block text-fg">On the globe: hold a fist for game mode</span>
-                  Point to aim, pinch to destroy · fist again to exit
+                  <span className="block text-fg">On the globe: tap Let&apos;s play to start the game</span>
+                  Point to aim, pinch to destroy · fist or Esc to exit
                 </span>
               </div>
 
