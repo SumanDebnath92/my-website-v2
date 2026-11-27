@@ -2798,8 +2798,8 @@ export default function Home() {
   // leftover scroll would nudge the page and scroll-snap would land on page 2.
   useEffect(() => {
     if (index !== STAGE_COUNT - 1) return;
-    let armed = false;
     let lastWheel = 0;
+    let pushAtEnd = 0; // downward scroll accumulated while already at the very end (one continuous gesture)
     let lockUntil = performance.now() + 700; // ignore the momentum that brought us here
     let touchY = 0;
     const panel = () => document.getElementById("stage-scroll");
@@ -2810,7 +2810,7 @@ export default function Home() {
     };
     const wrap = () => {
       lockUntil = performance.now() + 1100;
-      armed = false;
+      pushAtEnd = 0;
       startWrapSettle();
       goTo(0, true);
     };
@@ -2819,14 +2819,16 @@ export default function Home() {
       const gap = now - lastWheel;
       lastWheel = now;
       if (e.deltaY <= 0 || now < lockUntil || !atEnd()) {
-        if (e.deltaY <= 0) armed = false;
+        pushAtEnd = 0;
         return;
       }
-      if (armed && gap > 180) {
+      // At the end: a fresh scroll (after a short pause) loops right away; or keep pushing down a little more.
+      pushAtEnd = gap > 180 ? 0 : pushAtEnd + Math.abs(e.deltaY);
+      if (gap > 180 || pushAtEnd > 600) {
         e.preventDefault();
         e.stopPropagation();
         wrap();
-      } else armed = true;
+      }
     };
     const onTouchStart = (e: TouchEvent) => {
       touchY = e.touches[0].clientY;
