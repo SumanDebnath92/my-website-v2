@@ -1106,7 +1106,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
     const buildFor = (s: Scene): Model => {
       switch (s.kind) {
         case "portrait":
-          return buildPortrait(portrait, w, h, MAX_PTS, compact);
+          return buildPortrait(portrait, w, h, MAX_PTS, false); // centred in the panel / mobile band
         case "stack":
           return buildStack(MAX_PTS);
         case "flow":
@@ -1246,7 +1246,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
     const viewFor = (s: Scene): View => {
       const mx = mouse.nx, my = mouse.ny;
       let ry = 0, rx = 0, R = Math.min(w, h) * 0.44;
-      let oy = h / 2;
+      const oy = h / 2;
       if (s.kind === "stack") {
         ry = t * 0.08 + mx * 0.5;
         rx = -1.1 + my * 0.25;
@@ -1258,10 +1258,6 @@ function ParticleStage({ scene }: { scene: Scene }) {
         ry = (HOME.lon * Math.PI) / 180 + 0.22 + Math.sin(t * 0.15) * 0.35 + mx * 0.2 + globeDrag.yaw;
         rx = ((HOME.lat * Math.PI) / 180) * 0.8 + my * 0.25 + globeDrag.pitch;
         R = Math.min(w, h) * 0.46;
-      }
-      if (compact) {
-        R *= 0.82;
-        oy = h * 0.36;
       }
       return { cy: Math.cos(ry), sy: Math.sin(ry), cx: Math.cos(rx), sx: Math.sin(rx), ox: w / 2, oy, R };
     };
@@ -3035,6 +3031,10 @@ export default function Home() {
             ? { kind: "globe", variant: "experience" }
             : { kind: "globe", variant: "contact" };
 
+  // Phones / tablets: graphics band on top except on the globe pages; the game opens full screen instead.
+  const mobileBand = scene.kind !== "globe";
+  const [mobileGame, setMobileGame] = useState(false);
+
   // Globe screens: a one-time animated tip per mode (hand gestures vs mouse). It closes on ✕, after a while,
   // or once the visitor destroys a satellite.
   const hintMode: "gesture" | "mouse" = gesturesOn ? "gesture" : "mouse";
@@ -3083,11 +3083,12 @@ export default function Home() {
       <div className="fixed inset-0 overflow-hidden">
         <AmbientBackdrop progress={progress} stage={index} />
 
-        {/* Desktop: 7/12 content · 5/12 graphics. Mobile: graphics become a dimmed full-bleed backdrop. */}
+        {/* Desktop: 7/12 content · 5/12 graphics. Phones / tablets: graphics in a clear band on top, content below;
+            the globe pages show no graphics there (the game has its own full-screen page). */}
         <div className="absolute inset-0 lg:grid lg:grid-cols-12 lg:grid-rows-1">
           {/* Right: dynamic graphical stage */}
           <motion.div
-            className="absolute inset-0 opacity-70 lg:relative lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:opacity-100"
+            className={`${mobileBand ? "absolute inset-x-0 top-0 h-[38svh]" : "hidden"} lg:relative lg:inset-auto lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:block lg:h-auto`}
           >
             <NebulaSmoke vivid={index === 0} />
             <ParticleStage scene={scene} />
@@ -3095,11 +3096,15 @@ export default function Home() {
             <SceneCaption scene={scene} gestures={gesturesOn} targetMode={gesturesOn && targetMode} onPlay={replayHint} />
             <AnimatePresence>{showGameHint && hintMode === "mouse" && <GameHint key="mouse" onClose={dismissHint} />}</AnimatePresence>
           </motion.div>
-          {/* Keep left text readable over the backdrop on small screens */}
-          <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-bg/20 via-bg/60 to-bg/85 lg:hidden" />
+          {/* Phones: soft fade where the graphics band meets the content */}
+          {mobileBand && (
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-[calc(38svh-3rem)] h-12 bg-gradient-to-b from-transparent to-bg lg:hidden" />
+          )}
 
           {/* Left: data & cards */}
-          <main className="pointer-events-none absolute inset-0 [perspective:1400px] lg:relative lg:col-span-7 lg:col-start-1 lg:row-start-1">
+          <main
+            className={`pointer-events-none absolute inset-x-0 bottom-0 ${mobileBand ? "top-[38svh]" : "top-0"} [perspective:1400px] lg:relative lg:top-0 lg:col-span-7 lg:col-start-1 lg:row-start-1`}
+          >
             <div className="h-full w-full">
               <AnimatePresence mode="wait" custom={dir} initial={false}>
                 <motion.section
@@ -3123,6 +3128,7 @@ export default function Home() {
                       onPrev={() => index > 0 && goTo(index - 1)}
                       onMoreChange={setHasMore}
                       tall={index === 0}
+                      band={mobileBand}
                     >
                       <div className="mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none">
                         {index === 0 && <HeroStage onNavigate={goTo} />}
@@ -3146,7 +3152,31 @@ export default function Home() {
         </div>
 
         <ProgressDots active={index} progress={progress} onNavigate={goTo} pulse={gestureFlash} />
-        <HandGestures
+        {/* Top-right toolbar: (phones, last page) game button + hand gestures */}
+        <div className="absolute top-3 right-3 z-40 flex items-start gap-2 sm:top-4 sm:right-5">
+          <AnimatePresence>
+            {index === STAGE_COUNT - 1 && (
+              <motion.button
+                key="mobile-play"
+                type="button"
+                onClick={() => setMobileGame(true)}
+                aria-label="Play the satellite game"
+                title="Play the satellite game"
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{
+                  opacity: 1,
+                  scale: 1,
+                  boxShadow: ["0 0 8px rgba(251,146,60,0.4)", "0 0 22px rgba(251,146,60,0.85)", "0 0 8px rgba(251,146,60,0.4)"],
+                }}
+                exit={{ opacity: 0, scale: 0.6 }}
+                transition={{ boxShadow: { duration: 2, repeat: Infinity }, default: { duration: 0.25 } }}
+                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-bg lg:hidden"
+              >
+                <Gamepad2 className="h-5 w-5" aria-hidden />
+              </motion.button>
+            )}
+          </AnimatePresence>
+          <HandGestures
           enabled={gesturesOn}
           onEnabledChange={setGesturesOn}
           onFingers={onFingers}
@@ -3157,8 +3187,10 @@ export default function Home() {
           startGame={startGame}
           stopGame={stopGame}
         />
+        </div>
         <StageCounter active={index} />
       </div>
+      <MobileGame open={mobileGame} onClose={() => setMobileGame(false)} />
       <GestureIntroModal open={gestureIntro} onAccept={acceptGestures} onSkip={skipGestures} />
       <GestureGuideModal open={guideOpen} onClose={closeGuide} />
       <GestureGameModal open={showGameHint && hintMode === "gesture"} onClose={dismissHint} onPlay={playNow} />
@@ -3592,7 +3624,7 @@ function HandGestures({
     <>
       {/* One panel (top-right): the toggle row is its header, and the live preview unfolds below it. */}
       <div
-        className={`glass absolute top-3 right-3 z-40 overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-300 sm:top-4 sm:right-5 sm:w-36 ${
+        className={`glass relative overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-300 sm:w-36 ${
           enabled ? "w-36" : ""
         } ${
           confirm
@@ -4914,6 +4946,79 @@ function GameHint({ onClose }: { onClose: () => void }) {
   );
 }
 
+const GAME_SCENE: Scene = { kind: "globe", variant: "contact" };
+
+/** Phones / tablets: the satellite game on its own full-screen page (double-tap a satellite to destroy it). */
+function MobileGame({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [destroyed, setDestroyed] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const onHit = () => setDestroyed((n) => n + 1);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener(SAT_DESTROYED_EVENT, onHit);
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener(SAT_DESTROYED_EVENT, onHit);
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="mobile-game"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Satellite mini-game"
+          className="fixed inset-0 z-[60] overflow-hidden bg-bg lg:hidden"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+          style={{ touchAction: "manipulation" }}
+        >
+          <NebulaSmoke vivid={false} />
+          <div className="absolute inset-0">
+            <ParticleStage scene={GAME_SCENE} />
+          </div>
+
+          {/* Top bar */}
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-3 p-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="glass flex h-10 cursor-pointer items-center gap-1.5 rounded-full pr-4 pl-3 font-mono text-xs text-fg"
+            >
+              <ArrowRight className="h-4 w-4 rotate-180" aria-hidden />
+              Back
+            </button>
+            <span className="flex items-center gap-2 rounded-full border border-red-400/30 bg-[rgb(24_8_10/0.6)] px-3 py-2 font-mono text-xs text-red-100 backdrop-blur-md">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-400 shadow-[0_0_8px_rgb(248_113_113/0.9)]" />
+              Destroyed <span className="font-bold tabular-nums">{String(destroyed).padStart(2, "0")}</span>
+            </span>
+          </div>
+
+          {/* How to play */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div className="flex items-center gap-3 rounded-2xl border border-amber-300/40 bg-[rgb(20_14_6/0.75)] px-4 py-3 backdrop-blur-md">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-bg">
+                <Gamepad2 className="h-5 w-5" aria-hidden />
+              </span>
+              <span>
+                <span className="block font-mono text-sm font-bold text-amber-100">Double-tap a satellite</span>
+                <span className="block text-xs text-amber-200/75">Boom! A rocket launches a new one.</span>
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 /** First-visit invitation to try hand-gesture navigation. */
 function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept: () => void; onSkip: () => void }) {
   const acceptRef = useRef<HTMLButtonElement>(null);
@@ -5071,8 +5176,11 @@ function StageScroller({
   onPrev,
   onMoreChange,
   tall = false,
+  band = false,
 }: {
   children: ReactNode;
+  /** Phones: content sits below the graphics band, so the panel gets the remaining height. */
+  band?: boolean;
   /** Hero: top-aligned, so the panel may use the full height down to the scroll pill. */
   tall?: boolean;
   /** Changing this scrolls the panel back to the top. */
@@ -5254,7 +5362,8 @@ function StageScroller({
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
           className={`no-scrollbar -mx-4 -my-3 overflow-y-auto px-4 py-3 ${
-            tall ? "max-h-[calc(82vh+1.5rem)] lg:max-h-[calc(100vh-7.25rem)]" : "max-h-[calc(82vh+1.5rem)]"
+            band ? "max-h-[calc(62svh-5.5rem)]" : "max-h-[calc(82vh+1.5rem)]"
+          } ${tall ? "lg:max-h-[calc(100vh-7.25rem)]" : "lg:max-h-[calc(82vh+1.5rem)]"
           } ${overflow ? "overscroll-contain" : ""}`}
         >
           {children}
