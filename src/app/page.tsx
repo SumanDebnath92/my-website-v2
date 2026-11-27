@@ -3048,6 +3048,27 @@ export default function Home() {
     }
     if (Math.abs(delta) > 2) sc.scrollBy({ top: delta, behavior: "smooth" });
   }, []);
+  // Open a project. Once the accordion has finished opening (and the previous one has closed), bring it into
+  // view. Phones / tablets: always line its title up at the top, so you read it from the start rather than
+  // landing in the middle or at the bottom of it. Desktop: only scroll if it isn't fully visible.
+  const openProject = useCallback(
+    (i: number) => {
+      setActiveProject(i);
+      window.setTimeout(() => {
+        if (!compactUI) {
+          scrollPanelTo(`[data-project="${i}"]`);
+          return;
+        }
+        const sc = document.getElementById("stage-scroll");
+        const el = sc?.querySelector<HTMLElement>(`[data-project="${i}"]`);
+        if (!sc || !el) return;
+        const pad = 52; // clears the panel's soft top fade
+        const delta = el.getBoundingClientRect().top - (sc.getBoundingClientRect().top + pad);
+        if (Math.abs(delta) > 2) sc.scrollBy({ top: delta, behavior: "smooth" });
+      }, 380);
+    },
+    [compactUI, scrollPanelTo],
+  );
   const onStep = useCallback(
     (dir: 1 | -1) => {
       const sc = document.getElementById("stage-scroll");
@@ -3062,14 +3083,13 @@ export default function Home() {
       } else if (index === 2) {
         // Projects: open the next / previous accordion item and bring it into view.
         const next = Math.min(PROJECTS.length - 1, Math.max(0, activeProject + dir));
-        setActiveProject(next);
-        window.setTimeout(() => scrollPanelTo(`[data-project="${next}"]`), 380); // after the accordion opens
+        openProject(next);
       } else if (sc) {
         // Experience, Intro, Contact: scroll the panel a comfortable chunk.
         sc.scrollBy({ top: dir * sc.clientHeight * 0.55, behavior: "smooth" });
       }
     },
-    [index, activeGroup, activeProject, scrollPanelTo],
+    [index, activeGroup, activeProject, scrollPanelTo, openProject],
   );
 
   const scene: Scene =
@@ -3199,7 +3219,7 @@ export default function Home() {
                         {index === 2 && (
                           <ProjectsStage
                             activeProject={activeProject}
-                            onProject={setActiveProject}
+                            onProject={openProject}
                           />
                         )}
                         {index === 3 && <ExperienceStage />}
