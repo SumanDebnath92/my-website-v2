@@ -3133,8 +3133,16 @@ export default function Home() {
                       tall={index === 0}
                       band={mobileBand}
                     >
-                      <div className="mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none">
-                        {gesturesOn && !mobileBand && <GesturePanelClearance />}
+                      <div
+                        className={`mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none ${
+                          // Hand gestures on, pages without the graphics band (phones / tablets): only the page heading
+                          // makes room for the gesture window in the top-right corner — smaller text, kept clear of it.
+                          // Everything below the heading stays full width.
+                          gesturesOn && !mobileBand
+                            ? "max-lg:[&>div>h2:first-of-type]:pr-[7.5rem] max-lg:[&>div>h2:first-of-type]:text-[1.625rem] max-lg:[&>div>h2:first-of-type]:leading-[1.15] sm:max-lg:[&>div>h2:first-of-type]:pr-[9.5rem] sm:max-lg:[&>div>h2:first-of-type]:text-[2rem]"
+                            : ""
+                        }`}
+                      >
                         {index === 0 && <HeroStage onNavigate={goTo} />}
                         {index === 1 && <StackStage activeGroup={activeGroup} onGroup={setActiveGroup} />}
                         {index === 2 && (
@@ -3640,10 +3648,9 @@ function HandGestures({
     <>
       {/* One panel (top-right): the toggle row is its header, and the live preview unfolds below it. */}
       <div
-        data-gesture-panel
         className={`glass relative overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-300 sm:w-36 ${
-          // Phones: a near-solid backdrop, so the graphics behind the window don't show through it.
-          enabled ? "w-36 max-sm:bg-bg/90" : ""
+          // Phones: a smaller window with a near-solid backdrop, so the graphics behind it don't show through.
+          enabled ? "w-28 max-sm:bg-bg/90 sm:w-36" : ""
         } ${
           confirm
             ? "border-primary/70 shadow-[0_0_28px_-4px_rgb(34_211_238/0.7)]"
@@ -3724,7 +3731,7 @@ function HandGestures({
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-1.5 px-2 py-1.5" aria-live="polite">
+            <div className="flex items-center justify-center gap-1.5 px-2 py-1 sm:justify-start sm:py-1.5" aria-live="polite">
               <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
                 {confirm && (
                   <motion.span
@@ -3759,7 +3766,7 @@ function HandGestures({
                   <span className="font-mono text-sm font-bold text-fg">{live.fingers || "–"}</span>
                 )}
               </span>
-              <span className="min-w-0 flex-1 font-mono text-[10px] leading-tight whitespace-nowrap">
+              <span className="hidden min-w-0 flex-1 font-mono text-[10px] leading-tight whitespace-nowrap sm:block">
                 {confirm ? (
                   <>
                     <span className="block text-primary">Moved to</span>
@@ -5220,39 +5227,6 @@ function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept
 /* ════════════════════════════════════════════════════════════════════════════
  * Ambient layers
  * ════════════════════════════════════════════════════════════════════════════ */
-
-/**
- * Phones / tablets, pages without the graphics band: the gesture window sits over the top of the page. An invisible
- * float the size of the overlap makes the heading wrap around the window instead of running underneath it.
- */
-function GesturePanelClearance() {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    const panel = document.querySelector<HTMLElement>("[data-gesture-panel]");
-    if (!el || !panel) return;
-    const fit = () => {
-      const p = panel.getBoundingClientRect();
-      const box = el.parentElement!.getBoundingClientRect();
-      // Measure from where this spacer starts when the page is scrolled to the top.
-      const sc = document.getElementById("stage-scroll");
-      const top = el.getBoundingClientRect().top + (sc?.scrollTop ?? 0);
-      el.style.width = `${Math.max(0, box.right - p.left + 10)}px`;
-      el.style.height = `${Math.max(0, p.bottom + 10 - top)}px`;
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(panel);
-    ro.observe(el.parentElement!);
-    // The page slides in: measure again once it has settled.
-    const id = window.setTimeout(fit, 700);
-    return () => {
-      ro.disconnect();
-      window.clearTimeout(id);
-    };
-  }, []);
-  return <div ref={ref} aria-hidden className="float-right lg:hidden" />;
-}
 
 /**
  * Internal scroll for tall left-side stages. While there is more content, wheel/touch
