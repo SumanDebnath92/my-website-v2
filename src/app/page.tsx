@@ -3667,7 +3667,7 @@ function HandGestures({
         aria-pressed={enabled}
         aria-label={toggleLabel}
         title={toggleLabel}
-        className={`group flex h-10 w-full cursor-pointer items-center gap-2 pr-3 pl-2.5 font-mono text-[11px] tracking-wide transition-colors duration-300 ${
+        className={`group flex h-10 w-full cursor-pointer items-center justify-between gap-2 pr-3 pl-2.5 font-mono sm:justify-start text-[11px] tracking-wide transition-colors duration-300 ${
           active ? "text-fg" : "text-muted hover:text-fg-soft"
         }`}
       >
@@ -3681,7 +3681,8 @@ function HandGestures({
           )}
           {active && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 animate-pulse rounded-full bg-success" />}
         </span>
-        <span className={`${enabled ? "inline" : "hidden"} flex-1 text-left sm:inline`}>Gestures</span>
+        {/* Phones: the window is too narrow for the label next to the switch, so it shows only the icon and switch. */}
+        <span className="hidden flex-1 text-left sm:inline">Gestures</span>
         <span
           aria-hidden
           className={`relative h-4 w-7 shrink-0 rounded-full border transition-colors duration-300 ${
