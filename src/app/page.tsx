@@ -3137,9 +3137,10 @@ export default function Home() {
                         className={`mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none ${
                           // Hand gestures on, pages without the graphics band (phones / tablets): only the page heading
                           // makes room for the gesture window in the top-right corner — smaller text, kept clear of it.
-                          // Everything below the heading stays full width.
+                          // The heading is at least as tall as the window, so the text under it always starts below the window
+                          // (wide phones fit the heading in fewer lines). Everything below the heading stays full width.
                           gesturesOn && !mobileBand
-                            ? "max-lg:[&>div>h2:first-of-type]:pr-[8.25rem] max-lg:[&>div>h2:first-of-type]:text-[1.625rem] max-lg:[&>div>h2:first-of-type]:leading-[1.15] sm:max-lg:[&>div>h2:first-of-type]:pr-[9.5rem] sm:max-lg:[&>div>h2:first-of-type]:text-[2rem]"
+                            ? "max-lg:[&>div>h2:first-of-type]:pr-[8.25rem] max-lg:[&>div>h2:first-of-type]:text-[1.625rem] max-lg:[&>div>h2:first-of-type]:leading-[1.15] max-lg:[&>div>h2:first-of-type]:min-h-[6rem] sm:max-lg:[&>div>h2:first-of-type]:min-h-[7.5rem] sm:max-lg:[&>div>h2:first-of-type]:pr-[9.5rem] sm:max-lg:[&>div>h2:first-of-type]:text-[2rem]"
                             : ""
                         }`}
                       >
@@ -6250,7 +6251,7 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
         <span className="text-fg-soft">{PROFILE.specialty}</span>
       </motion.p>
 
-      <motion.ul variants={itemVariants} aria-label="Contact" className="mt-4 flex flex-wrap gap-2 sm:flex-nowrap">
+      <motion.ul variants={itemVariants} aria-label="Contact" className="mt-4 flex flex-wrap gap-1.5 sm:flex-nowrap sm:gap-2">
         {CONTACT_LINKS.map((c) => {
           const external = c.href.startsWith("http");
           return (
@@ -6260,10 +6261,11 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
                 {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                 aria-label={`${c.label}: ${c.value}`}
                 title={c.value}
-                className="group flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-line bg-white/[0.03] px-3.5 font-mono text-[13.5px] whitespace-nowrap lg:max-xl:gap-1.5 lg:max-xl:px-3 lg:max-xl:text-[12px] text-fg-soft transition-colors duration-200 hover:border-primary/40 hover:text-fg"
+                className="group flex min-h-10 w-full items-center justify-center gap-1.5 rounded-full border border-line bg-white/[0.03] px-2 font-mono text-[11px] whitespace-nowrap sm:gap-2 sm:px-3.5 sm:text-[13.5px] lg:max-xl:gap-1.5 lg:max-xl:px-3 lg:max-xl:text-[12px] text-fg-soft transition-colors duration-200 hover:border-primary/40 hover:text-fg"
               >
-                <c.icon className="h-[18px] w-[18px] shrink-0 text-primary" aria-hidden />
-                {/* LinkedIn / GitHub: label hidden on mid-size screens so the row stays on one line */}
+                <c.icon className="h-4 w-4 shrink-0 text-primary sm:h-[18px] sm:w-[18px]" aria-hidden />
+                {/* Phones: compact capsules, so email sits on line 1 and phone · LinkedIn · GitHub on line 2.
+                    LinkedIn / GitHub: label hidden on mid-size screens so the row stays on one line */}
                 <span className={c.iconOnly ? "sm:hidden 2xl:inline" : ""}>{c.short}</span>
               </a>
             </li>
