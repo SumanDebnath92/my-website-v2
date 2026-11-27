@@ -3134,6 +3134,7 @@ export default function Home() {
                       band={mobileBand}
                     >
                       <div className="mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none">
+                        {gesturesOn && !mobileBand && <GesturePanelClearance />}
                         {index === 0 && <HeroStage onNavigate={goTo} />}
                         {index === 1 && <StackStage activeGroup={activeGroup} onGroup={setActiveGroup} />}
                         {index === 2 && (
@@ -3639,8 +3640,10 @@ function HandGestures({
     <>
       {/* One panel (top-right): the toggle row is its header, and the live preview unfolds below it. */}
       <div
+        data-gesture-panel
         className={`glass relative overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-300 sm:w-36 ${
-          enabled ? "w-36" : ""
+          // Phones: a near-solid backdrop, so the graphics behind the window don't show through it.
+          enabled ? "w-36 max-sm:bg-bg/90" : ""
         } ${
           confirm
             ? "border-primary/70 shadow-[0_0_28px_-4px_rgb(34_211_238/0.7)]"
@@ -3698,7 +3701,7 @@ function HandGestures({
             className="border-t border-line"
           >
             <div
-              className="relative hidden aspect-[4/3] w-full sm:block"
+              className="relative aspect-[4/3] w-full"
               style={{
                 backgroundImage:
                   "radial-gradient(circle at 50% 60%, rgba(34,211,238,0.08), transparent 70%), linear-gradient(rgba(125,211,252,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.06) 1px, transparent 1px)",
@@ -5217,6 +5220,39 @@ function GestureIntroModal({ open, onAccept, onSkip }: { open: boolean; onAccept
 /* ════════════════════════════════════════════════════════════════════════════
  * Ambient layers
  * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Phones / tablets, pages without the graphics band: the gesture window sits over the top of the page. An invisible
+ * float the size of the overlap makes the heading wrap around the window instead of running underneath it.
+ */
+function GesturePanelClearance() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const panel = document.querySelector<HTMLElement>("[data-gesture-panel]");
+    if (!el || !panel) return;
+    const fit = () => {
+      const p = panel.getBoundingClientRect();
+      const box = el.parentElement!.getBoundingClientRect();
+      // Measure from where this spacer starts when the page is scrolled to the top.
+      const sc = document.getElementById("stage-scroll");
+      const top = el.getBoundingClientRect().top + (sc?.scrollTop ?? 0);
+      el.style.width = `${Math.max(0, box.right - p.left + 10)}px`;
+      el.style.height = `${Math.max(0, p.bottom + 10 - top)}px`;
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(panel);
+    ro.observe(el.parentElement!);
+    // The page slides in: measure again once it has settled.
+    const id = window.setTimeout(fit, 700);
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(id);
+    };
+  }, []);
+  return <div ref={ref} aria-hidden className="float-right lg:hidden" />;
+}
 
 /**
  * Internal scroll for tall left-side stages. While there is more content, wheel/touch
