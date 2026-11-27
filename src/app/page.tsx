@@ -6197,25 +6197,26 @@ function CareerPath() {
         <span className="font-semibold text-fg">{PROFILE.totalYears} years</span> in web development
         <span className="text-muted"> · career path</span>
       </p>
-      <ol aria-label="Career path" className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      {/* One row with arrows on every screen size (phones: compact steps), so it reads as a path, not separate cards. */}
+      <ol aria-label="Career path" className="mt-2 grid grid-cols-4 gap-2.5 sm:gap-3">
         {PROFILE.path.map((p, i) => (
           <li
             key={p.label}
-            className={`relative flex min-w-0 flex-col justify-center rounded-xl border px-3 py-1.5 ${
+            className={`relative flex min-w-0 flex-col justify-start rounded-xl border px-2 py-1.5 sm:justify-center sm:px-3 ${
               i === last
                 ? "border-primary/40 bg-primary/10 shadow-[0_0_18px_-6px_rgb(34_211_238/0.6)]"
                 : "border-line bg-white/[0.03]"
             }`}
           >
-            <span className={`font-mono text-[15px] leading-tight font-bold ${i === last ? "text-primary" : "text-fg"}`}>
+            <span className={`font-mono text-[13px] leading-tight font-bold whitespace-nowrap sm:text-[15px] ${i === last ? "text-primary" : "text-fg"}`}>
               {p.years} {p.years > 1 ? "yrs" : "yr"}
-              {i === last && <span className="ml-1 align-middle font-mono text-[10.5px] font-medium text-secondary">· now</span>}
+              {i === last && <span className="ml-1 hidden align-middle font-mono text-[10.5px] font-medium text-secondary sm:inline">· now</span>}
             </span>
-            <span className={`mt-0.5 font-mono text-[11.5px] leading-snug ${i === last ? "text-primary/90" : "text-fg-soft"}`}>{p.label}</span>
+            <span className={`mt-0.5 font-mono text-[10px] leading-snug sm:text-[11.5px] ${i === last ? "text-primary/90" : "text-fg-soft"}`}>{p.label}</span>
             {i < last && (
               <ArrowRight
                 aria-hidden
-                className="absolute top-1/2 -right-[11px] z-10 hidden h-3 w-3 -translate-y-1/2 text-muted sm:block"
+                className="absolute top-1/2 -right-[10px] z-10 h-2.5 w-2.5 -translate-y-1/2 text-muted sm:-right-[11px] sm:h-3 sm:w-3"
               />
             )}
           </li>
