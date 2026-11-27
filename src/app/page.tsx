@@ -3190,7 +3190,13 @@ export default function Home() {
         </div>
         <StageCounter active={index} />
       </div>
-      <MobileGame open={mobileGame} onClose={() => setMobileGame(false)} />
+      <MobileGame
+        open={mobileGame}
+        onClose={() => setMobileGame(false)}
+        gestures={gesturesOn}
+        playing={gesturesOn && targetMode}
+        onHowTo={replayHint}
+      />
       <GestureIntroModal open={gestureIntro} onAccept={acceptGestures} onSkip={skipGestures} />
       <GestureGuideModal open={guideOpen} onClose={closeGuide} />
       <GestureGameModal open={showGameHint && hintMode === "gesture"} onClose={dismissHint} onPlay={playNow} />
@@ -3683,7 +3689,7 @@ function HandGestures({
             className="border-t border-line"
           >
             <div
-              className="relative aspect-[4/3] w-full"
+              className="relative hidden aspect-[4/3] w-full sm:block"
               style={{
                 backgroundImage:
                   "radial-gradient(circle at 50% 60%, rgba(34,211,238,0.08), transparent 70%), linear-gradient(rgba(125,211,252,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.06) 1px, transparent 1px)",
@@ -4670,7 +4676,7 @@ function GestureGameModal({
       {open && (
         <motion.div
           key="game-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-bg/60 p-4 backdrop-blur-md"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-bg/60 p-4 backdrop-blur-md"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -4949,7 +4955,21 @@ function GameHint({ onClose }: { onClose: () => void }) {
 const GAME_SCENE: Scene = { kind: "globe", variant: "contact" };
 
 /** Phones / tablets: the satellite game on its own full-screen page (double-tap a satellite to destroy it). */
-function MobileGame({ open, onClose }: { open: boolean; onClose: () => void }) {
+function MobileGame({
+  open,
+  onClose,
+  gestures = false,
+  playing = false,
+  onHowTo,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Hand gestures are on: offer the hand-gesture guide (its "Let's play" starts game mode). */
+  gestures?: boolean;
+  /** Game mode is on (hand aiming). */
+  playing?: boolean;
+  onHowTo?: () => void;
+}) {
   const [destroyed, setDestroyed] = useState(0);
   useEffect(() => {
     if (!open) return;
@@ -5003,15 +5023,41 @@ function MobileGame({ open, onClose }: { open: boolean; onClose: () => void }) {
 
           {/* How to play */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <div className="flex items-center gap-3 rounded-2xl border border-amber-300/40 bg-[rgb(20_14_6/0.75)] px-4 py-3 backdrop-blur-md">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-bg">
-                <Gamepad2 className="h-5 w-5" aria-hidden />
-              </span>
-              <span>
-                <span className="block font-mono text-sm font-bold text-amber-100">Double-tap a satellite</span>
-                <span className="block text-xs text-amber-200/75">Boom! A rocket launches a new one.</span>
-              </span>
-            </div>
+            {gestures && playing ? (
+              <div className="flex max-w-sm items-center gap-3 rounded-2xl border border-amber-300/50 bg-[rgb(40_26_6/0.85)] px-4 py-3 backdrop-blur-md">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-bg">
+                  <Crosshair className="h-5 w-5" aria-hidden />
+                </span>
+                <span>
+                  <span className="block font-mono text-sm font-bold text-amber-100">Game mode on</span>
+                  <span className="block text-xs text-amber-200/80">Point your finger to aim, pinch to destroy. Fist or Esc to exit.</span>
+                </span>
+              </div>
+            ) : gestures ? (
+              <div className="pointer-events-auto flex w-full max-w-sm flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onHowTo}
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-gradient-to-r from-amber-300 to-orange-400 px-5 py-3 font-mono text-sm font-semibold text-bg shadow-[0_0_30px_-8px_rgb(251_146_60/0.9)]"
+                >
+                  <Hand className="h-4 w-4" aria-hidden />
+                  How to play with your hand
+                </button>
+                <span className="rounded-full bg-bg/70 px-3 py-1 text-xs text-fg-soft backdrop-blur">or just double-tap a satellite to destroy it</span>
+              </div>
+            ) : (
+              <div className="flex max-w-sm items-center gap-3 rounded-2xl border border-amber-300/40 bg-[rgb(20_14_6/0.8)] px-4 py-3 backdrop-blur-md">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-bg">
+                  <Gamepad2 className="h-5 w-5" aria-hidden />
+                </span>
+                <span>
+                  <span className="block font-mono text-sm font-bold text-amber-100">Double-tap a satellite to destroy it</span>
+                  <span className="block text-xs leading-snug text-amber-200/80">
+                    Tap twice quickly on any satellite circling the globe. Boom! A rocket then launches a new one. How many can you take down?
+                  </span>
+                </span>
+              </div>
+            )}
           </div>
         </motion.div>
       )}
