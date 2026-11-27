@@ -3048,24 +3048,40 @@ export default function Home() {
     }
     if (Math.abs(delta) > 2) sc.scrollBy({ top: delta, behavior: "smooth" });
   }, []);
-  // Open a project. Once the accordion has finished opening (and the previous one has closed), bring it into
-  // view. Phones / tablets: always line its title up at the top, so you read it from the start rather than
-  // landing in the middle or at the bottom of it. Desktop: only scroll if it isn't fully visible.
+  // Open a project.
+  // Phones / tablets: first scroll its title up to the top of the text area, then open it there. While it opens
+  // (and the previous one closes above it), the title is held in place, so nothing jumps afterwards.
+  // Desktop: open it, then scroll only if it isn't fully visible.
   const openProject = useCallback(
     (i: number) => {
-      setActiveProject(i);
-      window.setTimeout(() => {
-        if (!compactUI) {
-          scrollPanelTo(`[data-project="${i}"]`);
-          return;
-        }
-        const sc = document.getElementById("stage-scroll");
-        const el = sc?.querySelector<HTMLElement>(`[data-project="${i}"]`);
-        if (!sc || !el) return;
-        const pad = 52; // clears the panel's soft top fade
-        const delta = el.getBoundingClientRect().top - (sc.getBoundingClientRect().top + pad);
-        if (Math.abs(delta) > 2) sc.scrollBy({ top: delta, behavior: "smooth" });
-      }, 380);
+      const sc = document.getElementById("stage-scroll");
+      const el = sc?.querySelector<HTMLElement>(`[data-project="${i}"]`);
+      if (!compactUI || !sc || !el) {
+        setActiveProject(i);
+        window.setTimeout(() => scrollPanelTo(`[data-project="${i}"]`), 380); // after the accordion opens
+        return;
+      }
+      const pad = 52; // clears the panel's soft top fade
+      const offset = () => el.getBoundingClientRect().top - (sc.getBoundingClientRect().top + pad);
+      const openInPlace = () => {
+        setActiveProject(i);
+        const t0 = performance.now();
+        const hold = () => {
+          const d = offset();
+          // Title pushed up (the project above is closing): correct at once so it stays put.
+          // Title still below its spot (near the end of the list there was no room to scroll before opening):
+          // glide it up as the new project opens and makes room.
+          if (d < -0.5) sc.scrollTop += d;
+          else if (d > 0.5) sc.scrollTop += Math.max(0.5, d * 0.2);
+          if (performance.now() - t0 < 800) requestAnimationFrame(hold);
+        };
+        requestAnimationFrame(hold);
+      };
+      const d = offset();
+      if (Math.abs(d) > 2) {
+        sc.scrollBy({ top: d, behavior: "smooth" });
+        window.setTimeout(openInPlace, 380);
+      } else openInPlace();
     },
     [compactUI, scrollPanelTo],
   );
