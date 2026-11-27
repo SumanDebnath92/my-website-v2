@@ -20,7 +20,6 @@ import {
   Hand,
   LoaderCircle,
   Bot,
-  BriefcaseBusiness,
   ChevronDown,
   Cloud,
   Code,
@@ -35,7 +34,6 @@ import {
   ThumbsDown,
   ThumbsUp,
   VideoOff,
-  Workflow,
   Crosshair,
   Gamepad2,
   MousePointer2,
@@ -182,6 +180,13 @@ type Project = {
 
 const PROJECTS: Project[] = [
   {
+    name: "Training Management System",
+    badge: "Full stack",
+    summary:
+      "Training programs, video lessons and student progress tracking. App Router Server/Client split, JWT auth with middleware route protection, TanStack Query mutations, Zod on both ends, rate-limited APIs and Jest tests. Dockerized, deployed on Vercel + Railway.",
+    tags: ["Next.js", "TypeScript", "TanStack Query", "Tailwind CSS", "Node.js", "Express.js", "MongoDB", "Docker", "Jest"],
+  },
+  {
     name: "Red Belt Gym Management Software",
     badge: "Flagship",
     summary:
@@ -218,18 +223,28 @@ const PROJECTS: Project[] = [
     tags: ["JavaScript", "HTML5", "CSS3", "Drag & Drop", "Responsive Design"],
   },
   {
-    name: "Training Management System",
-    badge: "Full stack",
-    summary:
-      "Training programs, video lessons and student progress tracking. App Router Server/Client split, JWT auth with middleware route protection, TanStack Query mutations, Zod on both ends, rate-limited APIs and Jest tests. Dockerized, deployed on Vercel + Railway.",
-    tags: ["Next.js", "TypeScript", "TanStack Query", "Tailwind CSS", "Node.js", "Express.js", "MongoDB", "Docker", "Jest"],
-  },
-  {
     name: "Legal Will Creation Platform",
     badge: "Web app",
     summary:
       "Secure multi-step will wizard with authentication, beneficiary management and asset allocation.",
     tags: ["Angular", "HTML5", "CSS3"],
+  },
+  {
+    name: "Hospital Management Software",
+    badge: "Full stack · current",
+    summary:
+      "Building a hospital management platform end to end at Webingo: Next.js on the frontend, Node.js + Express.js REST APIs on the backend, with full CRUD across the core hospital modules.",
+    features: [
+      {
+        title: "REST APIs + CRUD",
+        text: "Designed and built Express.js REST APIs and integrated them in Next.js, covering create, read, update and delete across the core hospital modules.",
+      },
+      {
+        title: "Reusable staff flows",
+        text: "Reusable list, create, edit and delete pages and components with loading, error and validation states for a smooth staff experience.",
+      },
+    ],
+    tags: ["Next.js", "Node.js", "Express.js", "MongoDB", "REST APIs", "CRUD"],
   },
 ];
 
@@ -306,7 +321,8 @@ const CREDENTIALS = [
 const STAGES = [
   { id: "intro", label: "Intro", title: "Hero Intro" },
   { id: "stack", label: "Stack", title: "Full-Stack Tech Stack" },
-  { id: "work", label: "Work", title: "Featured Projects" },
+  { id: "projects", label: "Projects", title: "Featured Projects" },
+  { id: "experience", label: "Experience", title: "Experience" },
   { id: "contact", label: "Contact", title: "Contact" },
 ] as const;
 
@@ -386,6 +402,19 @@ type FlowSpec = {
 /** One live system diagram per project (unit coords, x ∈ [-1,1], y ∈ [-0.9,0.9]). */
 const FLOWS: FlowSpec[] = [
   {
+    title: "training-management-system",
+    url: "next.js + express",
+    nodes: [
+      { id: "ui", label: "Next.js App", sub: "server/client split", x: -0.68, y: -0.45 },
+      { id: "q", label: "TanStack Query", sub: "mutations", x: -0.68, y: 0.3 },
+      { id: "mw", label: "Middleware", sub: "JWT route guard", x: 0, y: -0.45 },
+      { id: "api", label: "Express API", sub: "Zod · rate limited", x: 0, y: 0.3 },
+      { id: "db", label: "MongoDB", sub: "programs · progress", x: 0.68, y: 0.3 },
+      { id: "ship", label: "Docker", sub: "Vercel + Railway", x: 0.68, y: -0.45 },
+    ],
+    edges: [["ui", "mw"], ["ui", "q"], ["q", "api"], ["mw", "api"], ["api", "db"], ["api", "ship"]],
+  },
+  {
     title: "workflow-automation-builder",
     url: "redbeltgym.com",
     hw: 0.27,
@@ -414,19 +443,6 @@ const FLOWS: FlowSpec[] = [
     edges: [["call", "menu"], ["menu", "sales", "1"], ["menu", "sup", "2"], ["sales", "agent"], ["sup", "sub"], ["sub", "agent"]],
   },
   {
-    title: "training-management-system",
-    url: "next.js + express",
-    nodes: [
-      { id: "ui", label: "Next.js App", sub: "server/client split", x: -0.68, y: -0.45 },
-      { id: "q", label: "TanStack Query", sub: "mutations", x: -0.68, y: 0.3 },
-      { id: "mw", label: "Middleware", sub: "JWT route guard", x: 0, y: -0.45 },
-      { id: "api", label: "Express API", sub: "Zod · rate limited", x: 0, y: 0.3 },
-      { id: "db", label: "MongoDB", sub: "programs · progress", x: 0.68, y: 0.3 },
-      { id: "ship", label: "Docker", sub: "Vercel + Railway", x: 0.68, y: -0.45 },
-    ],
-    edges: [["ui", "mw"], ["ui", "q"], ["q", "api"], ["mw", "api"], ["api", "db"], ["api", "ship"]],
-  },
-  {
     title: "will-creation-wizard",
     url: "angular",
     nodes: [
@@ -438,6 +454,19 @@ const FLOWS: FlowSpec[] = [
       { id: "f", label: "Will ready", sub: "download", x: -0.68, y: 0.32 },
     ],
     edges: [["a", "b"], ["b", "c"], ["c", "d"], ["d", "e"], ["e", "f"]],
+  },
+  {
+    title: "hospital-management-system",
+    url: "next.js + express",
+    nodes: [
+      { id: "ui", label: "Next.js App", sub: "staff screens", x: -0.68, y: -0.1 },
+      { id: "api", label: "Express API", sub: "REST · CRUD", x: 0, y: -0.1 },
+      { id: "db", label: "MongoDB", sub: "hospital records", x: 0.68, y: -0.1 },
+      { id: "pat", label: "Patients", sub: "list · create · edit", x: -0.5, y: 0.55 },
+      { id: "apt", label: "Appointments", sub: "schedule", x: 0.05, y: 0.55 },
+      { id: "bill", label: "Billing", sub: "invoices", x: 0.6, y: 0.55 },
+    ],
+    edges: [["ui", "api"], ["api", "db"], ["api", "pat"], ["api", "apt"], ["api", "bill"]],
   },
 ];
 
@@ -2753,7 +2782,6 @@ function useGoToStage() {
  * Page
  * ════════════════════════════════════════════════════════════════════════════ */
 
-type WorkTab = "projects" | "experience";
 
 export default function Home() {
   const { index, dir, progress } = useStageController();
@@ -2762,7 +2790,6 @@ export default function Home() {
 
   const [activeGroup, setActiveGroup] = useState(-1);
   const [activeProject, setActiveProject] = useState(0);
-  const [workTab, setWorkTab] = useState<WorkTab>("projects");
   const [hasMore, setHasMore] = useState(false);
 
   // Loop: scrolling on past the end of the last page jumps straight back to the first (instant, so it doesn't
@@ -2856,19 +2883,10 @@ export default function Home() {
     (n: number) => {
       const target = GESTURE_TARGETS.find((g) => g.fingers === n);
       if (target) {
-        // Number = fingers shown (4 = Experience); stage = where the page actually lives.
-        setGestureFlash({ id: Date.now(), page: n, label: target.label, stage: n === 4 ? 2 : n === 5 ? 3 : n - 1 });
+        setGestureFlash({ id: Date.now(), page: n, label: target.label, stage: n - 1 });
       }
-      // 1 Intro · 2 Tech stack · 3 Projects · 4 Experience (Work stage, Experience tab) · 5 Contact
-      if (n === 1) goTo(0);
-      else if (n === 2) goTo(1);
-      else if (n === 3) {
-        setWorkTab("projects");
-        goTo(2);
-      } else if (n === 4) {
-        setWorkTab("experience");
-        goTo(2);
-      } else if (n === 5) goTo(3);
+      // 1 Intro · 2 Tech stack · 3 Projects · 4 Experience · 5 Contact — one page each
+      if (n >= 1 && n <= STAGE_COUNT) goTo(n - 1);
     },
     [goTo],
   );
@@ -2902,7 +2920,7 @@ export default function Home() {
         setActiveGroup(group);
         if (next === 0) sc?.scrollTo({ top: 0, behavior: "smooth" }); // first card: show the page heading too
         else window.setTimeout(() => scrollPanelTo(`[data-group="${group}"]`), 30);
-      } else if (index === 2 && workTab === "projects") {
+      } else if (index === 2) {
         // Projects: open the next / previous accordion item and bring it into view.
         const next = Math.min(PROJECTS.length - 1, Math.max(0, activeProject + dir));
         setActiveProject(next);
@@ -2912,7 +2930,7 @@ export default function Home() {
         sc.scrollBy({ top: dir * sc.clientHeight * 0.55, behavior: "smooth" });
       }
     },
-    [index, workTab, activeGroup, activeProject, scrollPanelTo],
+    [index, activeGroup, activeProject, scrollPanelTo],
   );
 
   const scene: Scene =
@@ -2921,10 +2939,10 @@ export default function Home() {
       : index === 1
         ? { kind: "stack", group: activeGroup }
         : index === 2
-          ? workTab === "projects"
-            ? { kind: "flow", project: activeProject }
-            : { kind: "globe", variant: "experience" }
-          : { kind: "globe", variant: "contact" };
+          ? { kind: "flow", project: activeProject }
+          : index === 3
+            ? { kind: "globe", variant: "experience" }
+            : { kind: "globe", variant: "contact" };
 
   // Globe screens: a one-time animated tip per mode (hand gestures vs mouse). It closes on ✕, after a while,
   // or once the visitor destroys a satellite.
@@ -2963,7 +2981,7 @@ export default function Home() {
 
   return (
     <>
-      {/* Invisible scroll track: 4 × 100vh snap bands = 400vh */}
+      {/* Invisible scroll track: one 100vh snap band per stage */}
       <div aria-hidden className="relative">
         {STAGES.map((s) => (
           <div key={s.id} id={`track-${s.id}`} className="h-svh snap-start [scroll-snap-stop:always]" />
@@ -3009,7 +3027,7 @@ export default function Home() {
                 >
                   <div className="w-full px-4 sm:px-8 lg:pr-8 lg:pl-10 xl:pr-12 xl:pl-14 2xl:pl-[max(3.5rem,calc(50vw-44rem))]">
                     <StageScroller
-                      resetKey={index === 2 ? `work-${workTab}` : STAGES[index].id}
+                      resetKey={STAGES[index].id}
                       onNext={() => index < STAGE_COUNT - 1 && goTo(index + 1)}
                       onPrev={() => index > 0 && goTo(index - 1)}
                       onMoreChange={setHasMore}
@@ -3019,14 +3037,13 @@ export default function Home() {
                         {index === 0 && <HeroStage onNavigate={goTo} />}
                         {index === 1 && <StackStage activeGroup={activeGroup} onGroup={setActiveGroup} />}
                         {index === 2 && (
-                          <WorkStage
-                            tab={workTab}
-                            onTab={setWorkTab}
+                          <ProjectsStage
                             activeProject={activeProject}
                             onProject={setActiveProject}
                           />
                         )}
-                        {index === 3 && <ContactStage />}
+                        {index === 3 && <ExperienceStage />}
+                        {index === 4 && <ContactStage />}
                       </div>
                     </StageScroller>
                   </div>
@@ -5251,6 +5268,7 @@ const ORB_PALETTES = [
   ["#22d3ee", "#a78bfa", "#3b82f6"],
   ["#a78bfa", "#22d3ee", "#6366f1"],
   ["#3b82f6", "#a78bfa", "#22d3ee"],
+  ["#6366f1", "#22d3ee", "#8b5cf6"],
   ["#22d3ee", "#8b5cf6", "#a78bfa"],
 ];
 
@@ -5910,7 +5928,7 @@ function HeroStage({ onNavigate }: { onNavigate: (i: number) => void }) {
         </button>
         <button
           type="button"
-          onClick={() => onNavigate(3)}
+          onClick={() => onNavigate(4)}
           className="glass inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full px-5 font-mono text-sm text-fg transition-colors duration-200 hover:border-primary/40"
         >
           <Send className="h-4 w-4" />
@@ -6061,107 +6079,61 @@ function StackStage({ activeGroup, onGroup }: { activeGroup: number; onGroup: (g
  * Stage 3 — Featured Projects (+ Experience tab)
  * ════════════════════════════════════════════════════════════════════════════ */
 
-const WORK_TABS = [
-  { id: "projects", label: "Projects", icon: Workflow },
-  { id: "experience", label: "Experience", icon: BriefcaseBusiness },
-] as const;
-
-function WorkStage({
-  tab,
-  onTab,
-  activeProject,
-  onProject,
-}: {
-  tab: WorkTab;
-  onTab: (t: WorkTab) => void;
-  activeProject: number;
-  onProject: (i: number) => void;
-}) {
+function ProjectsStage({ activeProject, onProject }: { activeProject: number; onProject: (i: number) => void }) {
   return (
     <div className="w-full">
       <Eyebrow index={3}>Featured Projects</Eyebrow>
-      <motion.div variants={itemVariants} className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <h2 className="font-mono text-3xl font-bold tracking-tight sm:text-4xl">
-          Complex UI, <span className="text-primary">shipped at scale.</span>
-        </h2>
-        <div role="tablist" aria-label="Work view" className="glass inline-flex self-start rounded-full p-1">
-          {WORK_TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              id={`tab-${t.id}`}
-              aria-selected={tab === t.id}
-              aria-controls={`panel-${t.id}`}
-              onClick={() => onTab(t.id)}
-              className="relative flex min-h-10 cursor-pointer items-center gap-2 rounded-full px-4 font-mono text-xs"
-            >
-              {tab === t.id && (
-                <motion.span
-                  layoutId="work-tab"
-                  className="absolute inset-0 rounded-full bg-white/[0.08]"
-                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                />
-              )}
-              <t.icon className={`relative h-3.5 w-3.5 ${tab === t.id ? "text-primary" : "text-muted"}`} aria-hidden />
-              <span className={`relative ${tab === t.id ? "text-fg" : "text-muted"}`}>{t.label}</span>
-            </button>
-          ))}
-        </div>
-      </motion.div>
+      <motion.h2 variants={itemVariants} className="mb-5 font-mono text-3xl font-bold tracking-tight sm:text-4xl">
+        Complex UI, <span className="text-primary">shipped at scale.</span>
+      </motion.h2>
+      <motion.ul
+        initial="enter"
+        animate="center"
+        variants={{ center: { transition: { staggerChildren: 0.06 } } }}
+        className="grid gap-2.5"
+      >
+        {PROJECTS.map((p, i) => (
+          <ProjectRow key={p.name} project={p} index={i} active={i === activeProject} onActivate={() => onProject(i)} />
+        ))}
+      </motion.ul>
+    </div>
+  );
+}
 
-      <AnimatePresence mode="wait" initial={false}>
-        {tab === "projects" ? (
-          <motion.ul
-            key="projects"
-            id="panel-projects"
-            role="tabpanel"
-            aria-labelledby="tab-projects"
-            initial="enter"
-            animate="center"
-            exit="exit"
-            variants={{ center: { transition: { staggerChildren: 0.06 } } }}
-            className="grid gap-2.5"
-          >
-            {PROJECTS.map((p, i) => (
-              <ProjectRow key={p.name} project={p} index={i} active={i === activeProject} onActivate={() => onProject(i)} />
-            ))}
-          </motion.ul>
-        ) : (
-          <motion.div
-            key="experience"
-            id="panel-experience"
-            role="tabpanel"
-            aria-labelledby="tab-experience"
-            initial="enter"
-            animate="center"
-            exit="exit"
-            variants={{ center: { transition: { staggerChildren: 0.06 } } }}
-            className="grid gap-3"
-          >
-            {EXPERIENCE.map((r) => (
-              <RoleCard key={r.company} role={r} />
-            ))}
-            <TiltCard intensity={4}>
-              <div className="p-5">
-                <h3 className="mb-4 font-mono text-sm font-semibold">Earlier experience</h3>
-                <ol className="relative space-y-4 border-l border-line pl-4">
-                  {EARLIER_ROLES.map((r) => (
-                    <li key={r.company} className="relative">
-                      <span className="absolute top-1.5 -left-[21px] h-2.5 w-2.5 rounded-full border border-secondary bg-bg" />
-                      <p className="font-mono text-[11px] text-secondary">{r.period}</p>
-                      <p className="mt-0.5 text-sm font-semibold text-fg">
-                        {r.role} <span className="font-normal text-muted">· {r.company}</span>
-                      </p>
-                      <p className="mt-1 text-[13px] leading-relaxed text-fg-soft">{r.text}</p>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </TiltCard>
-          </motion.div>
-        )}
-      </AnimatePresence>
+function ExperienceStage() {
+  return (
+    <div className="w-full">
+      <Eyebrow index={4}>Experience</Eyebrow>
+      <motion.h2 variants={itemVariants} className="mb-5 font-mono text-3xl font-bold tracking-tight sm:text-4xl">
+        12+ years, <span className="text-secondary">shipping for real users.</span>
+      </motion.h2>
+      <motion.div
+        initial="enter"
+        animate="center"
+        variants={{ center: { transition: { staggerChildren: 0.06 } } }}
+        className="grid gap-3"
+      >
+        {EXPERIENCE.map((r) => (
+          <RoleCard key={r.company} role={r} />
+        ))}
+        <TiltCard intensity={4}>
+          <div className="p-5">
+            <h3 className="mb-4 font-mono text-sm font-semibold">Earlier experience</h3>
+            <ol className="relative space-y-4 border-l border-line pl-4">
+              {EARLIER_ROLES.map((r) => (
+                <li key={r.company} className="relative">
+                  <span className="absolute top-1.5 -left-[21px] h-2.5 w-2.5 rounded-full border border-secondary bg-bg" />
+                  <p className="font-mono text-[11px] text-secondary">{r.period}</p>
+                  <p className="mt-0.5 text-sm font-semibold text-fg">
+                    {r.role} <span className="font-normal text-muted">· {r.company}</span>
+                  </p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-fg-soft">{r.text}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </TiltCard>
+      </motion.div>
     </div>
   );
 }
@@ -6417,7 +6389,7 @@ function ContactForm() {
 function ContactStage() {
   return (
     <div className="w-full">
-      <Eyebrow index={4}>Contact</Eyebrow>
+      <Eyebrow index={5}>Contact</Eyebrow>
       <motion.h2 variants={itemVariants} className="font-mono text-4xl leading-[1.05] font-bold tracking-tight sm:text-5xl xl:text-6xl">
         Let&apos;s build something{" "}
         <span className="glow-text bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">fast.</span>
