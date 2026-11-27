@@ -208,7 +208,25 @@ const PROJECTS: Project[] = [
     name: "Training Management System",
     badge: "Full stack",
     summary:
-      "Training programs, video lessons and student progress tracking. App Router Server/Client split, JWT auth with middleware route protection, TanStack Query mutations, Zod on both ends, rate-limited APIs and Jest tests. Dockerized, deployed on Vercel + Railway.",
+      "A training platform for gym owners and staff: create trainings, chain them into training paths, set time-bound challenges, and assign them to the right students by belt colour and attendance. Built front end and back end.",
+    features: [
+      {
+        title: "Trainings",
+        text: "Staff create any training (kickboxing, boxing and more) with a name, description, criteria and YouTube videos.",
+      },
+      {
+        title: "Training paths",
+        text: "Several trainings in a set order (push-ups → sit-ups → weightlifting → running); completing a path makes a student eligible for the next training.",
+      },
+      {
+        title: "Challenges",
+        text: "One or more trainings to complete within a set number of hours, days, weeks or months.",
+      },
+      {
+        title: "Criteria",
+        text: "Belt colour and attendance decide who qualifies: pick, say, yellow or blue belt, and the students at that level can be assigned.",
+      },
+    ],
     tags: ["Next.js", "TypeScript", "TanStack Query", "Tailwind CSS", "Node.js", "Express.js", "MongoDB", "Docker", "Jest"],
   },
   {
@@ -237,12 +255,20 @@ const PROJECTS: Project[] = [
     name: "Chirply — CRM & Communication",
     badge: "Frontend owner",
     summary:
-      "Built the complete frontend of a subscription CRM (Laravel backend by another team) with one-click SMS, email and calling, fully responsive across devices.",
+      "A subscription CRM for shops and businesses: reach customers by call, SMS or email from one contact list, answer their calls right in the browser, and keep every call recording and message in one history. I built the complete frontend (Laravel backend by another team), fully responsive.",
     url: { href: "https://chirply.io", label: "chirply.io" },
     features: [
       {
+        title: "Contacts & one-click outreach",
+        text: "A contact list with name, email, phone and more; call, SMS or email any customer straight from the portal.",
+      },
+      {
+        title: "Calls in the browser + history",
+        text: "When a customer calls the business number, staff answer from the computer. Call recordings and sent / received messages are all tracked in history.",
+      },
+      {
         title: "Visual IVR Builder",
-        text: "Drag-and-drop tool where each business designs its own phone menu (“Press 1 for sales, press 2 for support”) as connected nodes, nested to any depth — in plain JavaScript.",
+        text: "Each business designs its own phone menu (“Press 1 for support, 2 for products, 3 for offers”) as drag-and-drop connected nodes, nested to any depth, in plain JavaScript.",
       },
     ],
     tags: ["JavaScript", "HTML5", "CSS3", "Drag & Drop", "Responsive Design"],
@@ -416,11 +442,17 @@ const STACK_ICONS: Record<string, { d: string; stroke?: boolean }> = {
   "flow:eye": { d: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0", stroke: true },
   "flow:note": { d: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z", stroke: true },
   "flow:hospital": { d: "M12 6v4M14 8h-4M18 21V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16M2 21h20M9 21v-4h6v4M6 12H4a2 2 0 0 0-2 2v7M18 12h2a2 2 0 0 1 2 2v7", stroke: true },
+  "flow:dumbbell": { d: "M14.4 14.4L9.6 9.6M18.7 21.5a2 2 0 1 1-2.8-2.8l-1.8 1.8a2 2 0 1 1-2.8-2.8l6.4-6.4a2 2 0 1 1 2.8 2.8l1.8-1.8a2 2 0 1 1 2.8 2.8zM21.5 21.5l-1.4-1.4M3.9 3.9L2.5 2.5M6.4 12.8a2 2 0 1 1-2.8-2.8l1.8-1.8a2 2 0 1 1-2.8-2.8l2.8-2.8a2 2 0 1 1 2.8 2.8l1.8-1.8a2 2 0 1 1 2.8 2.8z", stroke: true },
+  "flow:route": { d: "M3 19a3 3 0 1 0 6 0a3 3 0 1 0-6 0M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15M15 5a3 3 0 1 0 6 0a3 3 0 1 0-6 0", stroke: true },
+  "flow:timer": { d: "M10 2h4M12 14l3-3M20 14a8 8 0 1 1-16 0a8 8 0 1 1 16 0", stroke: true },
+  "flow:award": { d: "M15.5 12.9L17 21.5l-5-3-5 3 1.5-8.6M18 8a6 6 0 1 1-12 0a6 6 0 1 1 12 0", stroke: true },
+  "flow:history": { d: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l4 2", stroke: true },
+  "flow:phone-in": { d: "M16 2v6h6M22 2l-6 6M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z", stroke: true },
   "flow:sms": { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM7 8h10M7 12h6", stroke: true },
 };
 const nodeAngle = (k: number, j: number) => (j / RINGS[k].nodes.length) * Math.PI * 2 + k * 0.7;
 
-type FlowNode = { id: string; label: string; sub?: string; icon?: string; x: number; y: number };
+type FlowNode = { id: string; label: string; sub?: string; icon?: string; x: number; y: number; /** label above the badge (when an edge enters from below) */ labelUp?: boolean };
 type FlowSpec = {
   title: string;
   url: string;
@@ -449,15 +481,16 @@ const FLOWS: FlowSpec[] = [
   {
     title: "training-management-system",
     url: "next.js + express",
+    // Order = highlight sequence: staff create trainings → paths → challenges; criteria decide which students.
     nodes: [
-      { id: "ui", label: "Next.js app", icon: "flow:monitor", x: -0.62, y: -0.42 },
-      { id: "q", label: "Data sync", icon: "flow:sync", x: -0.62, y: 0.38 },
-      { id: "mw", label: "Secure login", icon: "flow:shield", x: 0, y: -0.42 },
-      { id: "api", label: "API", icon: "flow:server", x: 0, y: 0.38 },
-      { id: "db", label: "Database", icon: "flow:database", x: 0.62, y: 0.38 },
-      { id: "ship", label: "Deploy", icon: "flow:box", x: 0.62, y: -0.42 },
+      { id: "staff", label: "Gym staff", icon: "flow:user", x: -0.62, y: -0.5 },
+      { id: "tr", label: "Trainings", icon: "flow:dumbbell", x: 0, y: -0.5 },
+      { id: "path", label: "Training path", icon: "flow:route", x: 0.62, y: -0.5 },
+      { id: "ch", label: "Challenges", icon: "flow:timer", x: 0.62, y: 0.42 },
+      { id: "crit", label: "Belt & attendance", icon: "flow:award", x: -0.62, y: 0.42 },
+      { id: "stu", label: "Students", icon: "flow:users", x: 0, y: 0.42 },
     ],
-    edges: [["ui", "mw"], ["ui", "q"], ["q", "api"], ["mw", "api"], ["api", "db"], ["api", "ship"]],
+    edges: [["staff", "tr"], ["tr", "path"], ["path", "ch"], ["ch", "stu"], ["staff", "crit"], ["crit", "stu"]],
   },
   {
     title: "workflow-automation-builder",
@@ -474,17 +507,27 @@ const FLOWS: FlowSpec[] = [
     edges: [["t", "f"], ["f", "ey", "yes"], ["f", "en", "no"], ["ey", "sy"], ["en", "sn"]],
   },
   {
-    title: "visual-ivr-builder",
+    title: "crm-calls-sms-email",
     url: "chirply.io",
+    // Top: reach customers from the contact list. Bottom: customers call in → IVR → staff answer in the browser.
+    // Everything lands in History (call recordings + messages), which the business tracks and manages.
     nodes: [
-      { id: "call", label: "Call", icon: "flow:phone", x: -0.7, y: 0 },
-      { id: "menu", label: "Menu", icon: "flow:menu", x: -0.2, y: 0 },
-      { id: "sales", label: "Sales", icon: "flow:sales", x: 0.28, y: -0.48 },
-      { id: "sup", label: "Support", icon: "flow:headset", x: 0.28, y: 0.1 },
-      { id: "sub", label: "Sub-menu", icon: "flow:branch", x: 0.72, y: 0.52 },
-      { id: "agent", label: "Agent", icon: "flow:user", x: 0.72, y: -0.48 },
+      { id: "contacts", label: "Contacts", icon: "flow:users", x: -0.66, y: -0.3 },
+      { id: "call", label: "Call", icon: "flow:phone", x: -0.04, y: -0.6 },
+      { id: "sms", label: "SMS", icon: "flow:sms", x: -0.04, y: -0.18 },
+      { id: "mail", label: "Email", icon: "flow:mail", x: -0.04, y: 0.24 },
+      { id: "hist", label: "History", icon: "flow:history", x: 0.66, y: -0.08 },
+      { id: "in", label: "Customer calls", icon: "flow:phone-in", x: -0.66, y: 0.6 },
+      { id: "ivr", label: "IVR menu", icon: "flow:branch", x: -0.04, y: 0.62 },
+      { id: "agent", label: "Answer in browser", icon: "flow:headset", x: 0.66, y: 0.6 },
+      { id: "manage", label: "Track & manage", icon: "flow:floorplan", x: 0.66, y: -0.56, labelUp: true },
     ],
-    edges: [["call", "menu"], ["menu", "sales", "1"], ["menu", "sup", "2"], ["sales", "agent"], ["sup", "sub"], ["sub", "agent"]],
+    edges: [
+      ["contacts", "call"], ["contacts", "sms"], ["contacts", "mail"],
+      ["call", "hist"], ["sms", "hist"], ["mail", "hist"],
+      ["in", "ivr"], ["ivr", "agent"], ["agent", "hist"],
+      ["hist", "manage"],
+    ],
   },
   {
     title: "will-creation-wizard",
@@ -1500,7 +1543,8 @@ function ParticleStage({ scene }: { scene: Scene }) {
       octx.stroke();
       const iconSize = (compact ? 24 : 30) * (1 + 0.08 * glow);
       if (n.icon) planeIcon(v, n.icon, n.x, n.y, iconSize, glow > 0 ? "#ede9fe" : "#7dd3fc");
-      planeText(v, n.label, n.x, n.y + NODE_R, compact ? 10 : 11.5, glow > 0 ? "#ede9fe" : "#cbd5e1", 600, "center", undefined, compact ? 11 : 13);
+      const labelGap = compact ? 11 : 13;
+      planeText(v, n.label, n.x, n.labelUp ? n.y - NODE_R : n.y + NODE_R, compact ? 10 : 11.5, glow > 0 ? "#ede9fe" : "#cbd5e1", 600, "center", undefined, n.labelUp ? -labelGap : labelGap);
     };
 
     /** Axis-aligned rectangle on the plane (unit coords), returned as a path ready to fill/stroke. */
