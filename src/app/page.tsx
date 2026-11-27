@@ -5552,16 +5552,19 @@ function StageScroller({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.25 }}
-              className="glass absolute -bottom-12 left-1/2 flex min-h-9 -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full px-3.5 font-mono text-[11px] tracking-wider whitespace-nowrap text-fg-soft uppercase transition-colors duration-200 hover:border-primary/40 hover:text-fg"
+              aria-label="Scroll for more"
+              // Phones / tablets: a round arrow button inside the panel's bottom-right corner — below the panel it
+              // ended up behind the mobile browser's toolbar. Desktop: the labelled pill under the panel.
+              className="glass absolute right-1 bottom-1 z-10 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-bg/80 font-mono text-[11px] tracking-wider whitespace-nowrap text-fg-soft uppercase shadow-[0_0_18px_-6px_rgb(34_211_238/0.7)] transition-colors duration-200 hover:border-primary/40 hover:text-fg lg:right-auto lg:-bottom-12 lg:left-1/2 lg:h-auto lg:min-h-9 lg:w-auto lg:-translate-x-1/2 lg:gap-2 lg:bg-transparent lg:px-3.5 lg:shadow-none"
             >
-              <Mouse className="h-3.5 w-3.5 text-primary" aria-hidden />
-              Scroll for more
+              <Mouse className="hidden h-3.5 w-3.5 text-primary lg:block" aria-hidden />
+              <span className="hidden lg:inline">Scroll for more</span>
               <motion.span
                 aria-hidden
                 animate={reduce ? undefined : { y: [0, 3, 0] }}
                 transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
               >
-                <ChevronDown className="h-3.5 w-3.5 text-secondary" />
+                <ChevronDown className="h-5 w-5 text-secondary lg:h-3.5 lg:w-3.5" />
               </motion.span>
             </motion.button>
           )}
