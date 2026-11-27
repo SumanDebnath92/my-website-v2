@@ -3197,7 +3197,11 @@ export default function Home() {
       </div>
       <MobileGame
         open={mobileGame}
-        onClose={() => setMobileGame(false)}
+        onClose={() => {
+          setMobileGame(false);
+          // Leaving the game screen (Back or Esc) also leaves hand-gesture game mode.
+          if (gesturesOn && targetMode) setStopGame((n) => n + 1);
+        }}
         gestures={gesturesOn}
         playing={gesturesOn && targetMode}
         onHowTo={replayHint}
