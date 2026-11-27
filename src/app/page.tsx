@@ -180,6 +180,31 @@ type Project = {
 
 const PROJECTS: Project[] = [
   {
+    name: "Hospital Management Software",
+    badge: "Full stack · current",
+    summary:
+      "Real-time tracking for hospitals: see where every patient bed, CCTV camera and piece of equipment is, room by room, and its status. The hospital's own system sends the data to our server, and our Next.js + Express.js app shows it live. Building it end to end at Webingo.",
+    features: [
+      {
+        title: "Live location tracking",
+        text: "Find any bed, camera (with its number and room) or device across the building, with its current status, from one live view. Track-only: the devices are never controlled from the app.",
+      },
+      {
+        title: "Data from the hospital's system",
+        text: "Location and status data flows from the hospital's own system into our Express.js backend, which processes it and serves it to the Next.js frontend.",
+      },
+      {
+        title: "Notes & status updates",
+        text: "Staff can add notes to an item and update its status, saved through our REST APIs.",
+      },
+      {
+        title: "Reusable staff flows",
+        text: "Reusable list, create, edit and delete screens with loading, error and validation states for a smooth staff experience.",
+      },
+    ],
+    tags: ["Next.js", "Node.js", "Express.js", "MongoDB", "REST APIs", "Real-time tracking"],
+  },
+  {
     name: "Training Management System",
     badge: "Full stack",
     summary:
@@ -228,23 +253,6 @@ const PROJECTS: Project[] = [
     summary:
       "Secure multi-step will wizard with authentication, beneficiary management and asset allocation.",
     tags: ["Angular", "HTML5", "CSS3"],
-  },
-  {
-    name: "Hospital Management Software",
-    badge: "Full stack · current",
-    summary:
-      "Building a hospital management platform end to end at Webingo: Next.js on the frontend, Node.js + Express.js REST APIs on the backend, with full CRUD across the core hospital modules.",
-    features: [
-      {
-        title: "REST APIs + CRUD",
-        text: "Designed and built Express.js REST APIs and integrated them in Next.js, covering create, read, update and delete across the core hospital modules.",
-      },
-      {
-        title: "Reusable staff flows",
-        text: "Reusable list, create, edit and delete pages and components with loading, error and validation states for a smooth staff experience.",
-      },
-    ],
-    tags: ["Next.js", "Node.js", "Express.js", "MongoDB", "REST APIs", "CRUD"],
   },
 ];
 
@@ -383,6 +391,31 @@ const STACK_ICONS: Record<string, { d: string; stroke?: boolean }> = {
   "flow:user-plus": { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0a4 4 0 1 1 8 0M19 8v6M22 11h-6", stroke: true },
   "flow:filter": { d: "M22 3H2l8 9.46V19l4 2v-8.54L22 3z", stroke: true },
   "flow:mail": { d: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6", stroke: true },
+  "flow:bed": { d: "M2 4v16M2 8h18a2 2 0 0 1 2 2v10M2 17h20M6 8v9", stroke: true },
+  "flow:cctv": { d: "M16 13l5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 10.5M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z", stroke: true },
+  "flow:pulse": { d: "M22 12h-4l-3 9L9 3l-3 9H2", stroke: true },
+  "flow:pin": { d: "M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0zM15 10a3 3 0 1 1-6 0a3 3 0 1 1 6 0", stroke: true },
+  "flow:server": { d: "M4 2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM4 14h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2zM6 6h.01M6 18h.01", stroke: true },
+  "flow:floorplan": { d: "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z", stroke: true },
+  "flow:monitor": { d: "M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 21h8M12 17v4", stroke: true },
+  "flow:sync": { d: "M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5", stroke: true },
+  "flow:shield": { d: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4", stroke: true },
+  "flow:database": { d: "M3 5a9 3 0 1 0 18 0a9 3 0 1 0-18 0M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0", stroke: true },
+  "flow:box": { d: "M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8", stroke: true },
+  "flow:phone": { d: "M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z", stroke: true },
+  "flow:menu": { d: "M3 6h18M3 12h18M3 18h18", stroke: true },
+  "flow:sales": { d: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6", stroke: true },
+  "flow:headset": { d: "M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3", stroke: true },
+  "flow:branch": { d: "M6 3v12M18 9a3 3 0 1 0 0-6a3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6a3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9", stroke: true },
+  "flow:user": { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M16 7a4 4 0 1 1-8 0a4 4 0 1 1 8 0", stroke: true },
+  "flow:lock": { d: "M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4", stroke: true },
+  "flow:users": { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0a4 4 0 1 1 8 0M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8", stroke: true },
+  "flow:home": { d: "M3 10l9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10", stroke: true },
+  "flow:check": { d: "M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M9 14l2 2 4-4", stroke: true },
+  "flow:file": { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8", stroke: true },
+  "flow:eye": { d: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0", stroke: true },
+  "flow:note": { d: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z", stroke: true },
+  "flow:hospital": { d: "M12 6v4M14 8h-4M18 21V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16M2 21h20M9 21v-4h6v4M6 12H4a2 2 0 0 0-2 2v7M18 12h2a2 2 0 0 1 2 2v7", stroke: true },
   "flow:sms": { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM7 8h10M7 12h6", stroke: true },
 };
 const nodeAngle = (k: number, j: number) => (j / RINGS[k].nodes.length) * Math.PI * 2 + k * 0.7;
@@ -393,8 +426,6 @@ type FlowSpec = {
   url: string;
   nodes: FlowNode[];
   edges: [string, string, string?][];
-  /** Node half-width in unit coords (defaults to NODE_HW). */
-  hw?: number;
   /** Play the scripted trigger → filter → email → SMS run instead of generic pulses. */
   script?: boolean;
 };
@@ -402,30 +433,43 @@ type FlowSpec = {
 /** One live system diagram per project (unit coords, x ∈ [-1,1], y ∈ [-0.9,0.9]). */
 const FLOWS: FlowSpec[] = [
   {
+    title: "hospital-location-tracking",
+    url: "next.js + express",
+    nodes: [
+      { id: "bed", label: "Beds", icon: "flow:bed", x: -0.62, y: -0.52 },
+      { id: "cam", label: "CCTV", icon: "flow:cctv", x: 0, y: -0.52 },
+      { id: "eq", label: "Equipment", icon: "flow:pulse", x: 0.62, y: -0.52 },
+      { id: "hosp", label: "Hospital system", icon: "flow:hospital", x: 0, y: -0.04 },
+      { id: "api", label: "Our server", icon: "flow:server", x: -0.5, y: 0.5 },
+      { id: "view", label: "Live tracking", icon: "flow:eye", x: 0.12, y: 0.5 },
+      { id: "notes", label: "Notes & status", icon: "flow:note", x: 0.68, y: 0.5 },
+    ],
+    edges: [["bed", "hosp"], ["cam", "hosp"], ["eq", "hosp"], ["hosp", "api"], ["api", "view"], ["view", "notes"]],
+  },
+  {
     title: "training-management-system",
     url: "next.js + express",
     nodes: [
-      { id: "ui", label: "Next.js App", sub: "server/client split", x: -0.68, y: -0.45 },
-      { id: "q", label: "TanStack Query", sub: "mutations", x: -0.68, y: 0.3 },
-      { id: "mw", label: "Middleware", sub: "JWT route guard", x: 0, y: -0.45 },
-      { id: "api", label: "Express API", sub: "Zod · rate limited", x: 0, y: 0.3 },
-      { id: "db", label: "MongoDB", sub: "programs · progress", x: 0.68, y: 0.3 },
-      { id: "ship", label: "Docker", sub: "Vercel + Railway", x: 0.68, y: -0.45 },
+      { id: "ui", label: "Next.js app", icon: "flow:monitor", x: -0.62, y: -0.42 },
+      { id: "q", label: "Data sync", icon: "flow:sync", x: -0.62, y: 0.38 },
+      { id: "mw", label: "Secure login", icon: "flow:shield", x: 0, y: -0.42 },
+      { id: "api", label: "API", icon: "flow:server", x: 0, y: 0.38 },
+      { id: "db", label: "Database", icon: "flow:database", x: 0.62, y: 0.38 },
+      { id: "ship", label: "Deploy", icon: "flow:box", x: 0.62, y: -0.42 },
     ],
     edges: [["ui", "mw"], ["ui", "q"], ["q", "api"], ["mw", "api"], ["api", "db"], ["api", "ship"]],
   },
   {
     title: "workflow-automation-builder",
     url: "redbeltgym.com",
-    hw: 0.27,
     script: true,
     nodes: [
-      { id: "t", label: "Trigger", sub: "Contact added", icon: "flow:user-plus", x: 0, y: -0.56 },
-      { id: "f", label: "Filter", sub: "Yes / No", icon: "flow:filter", x: 0, y: -0.2 },
-      { id: "ey", label: "Send email", sub: "yes path", icon: "flow:mail", x: -0.48, y: 0.16 },
-      { id: "en", label: "Send email", sub: "no path", icon: "flow:mail", x: 0.48, y: 0.16 },
-      { id: "sy", label: "Send SMS", sub: "yes path", icon: "flow:sms", x: -0.48, y: 0.52 },
-      { id: "sn", label: "Send SMS", sub: "no path", icon: "flow:sms", x: 0.48, y: 0.52 },
+      { id: "t", label: "New contact", icon: "flow:user-plus", x: 0, y: -0.56 },
+      { id: "f", label: "Filter", icon: "flow:filter", x: 0, y: -0.2 },
+      { id: "ey", label: "Email", icon: "flow:mail", x: -0.48, y: 0.16 },
+      { id: "en", label: "Email", icon: "flow:mail", x: 0.48, y: 0.16 },
+      { id: "sy", label: "SMS", icon: "flow:sms", x: -0.48, y: 0.52 },
+      { id: "sn", label: "SMS", icon: "flow:sms", x: 0.48, y: 0.52 },
     ],
     edges: [["t", "f"], ["f", "ey", "yes"], ["f", "en", "no"], ["ey", "sy"], ["en", "sn"]],
   },
@@ -433,12 +477,12 @@ const FLOWS: FlowSpec[] = [
     title: "visual-ivr-builder",
     url: "chirply.io",
     nodes: [
-      { id: "call", label: "Incoming call", sub: "business line", x: -0.7, y: 0 },
-      { id: "menu", label: "Main menu", sub: "greeting", x: -0.18, y: 0 },
-      { id: "sales", label: "Press 1", sub: "sales", x: 0.3, y: -0.5 },
-      { id: "sup", label: "Press 2", sub: "support", x: 0.3, y: 0.08 },
-      { id: "sub", label: "Nested menu", sub: "any depth", x: 0.7, y: 0.55 },
-      { id: "agent", label: "Agent", sub: "call · SMS · email", x: 0.7, y: -0.5 },
+      { id: "call", label: "Call", icon: "flow:phone", x: -0.7, y: 0 },
+      { id: "menu", label: "Menu", icon: "flow:menu", x: -0.2, y: 0 },
+      { id: "sales", label: "Sales", icon: "flow:sales", x: 0.28, y: -0.48 },
+      { id: "sup", label: "Support", icon: "flow:headset", x: 0.28, y: 0.1 },
+      { id: "sub", label: "Sub-menu", icon: "flow:branch", x: 0.72, y: 0.52 },
+      { id: "agent", label: "Agent", icon: "flow:user", x: 0.72, y: -0.48 },
     ],
     edges: [["call", "menu"], ["menu", "sales", "1"], ["menu", "sup", "2"], ["sales", "agent"], ["sup", "sub"], ["sub", "agent"]],
   },
@@ -446,27 +490,14 @@ const FLOWS: FlowSpec[] = [
     title: "will-creation-wizard",
     url: "angular",
     nodes: [
-      { id: "a", label: "Sign in", sub: "secure auth", x: -0.68, y: -0.42 },
-      { id: "b", label: "Your details", sub: "step 1", x: 0, y: -0.42 },
-      { id: "c", label: "Beneficiaries", sub: "step 2", x: 0.68, y: -0.42 },
-      { id: "d", label: "Assets", sub: "allocation", x: 0.68, y: 0.32 },
-      { id: "e", label: "Review", sub: "step 4", x: 0, y: 0.32 },
-      { id: "f", label: "Will ready", sub: "download", x: -0.68, y: 0.32 },
+      { id: "a", label: "Sign in", icon: "flow:lock", x: -0.62, y: -0.38 },
+      { id: "b", label: "Details", icon: "flow:user", x: 0, y: -0.38 },
+      { id: "c", label: "Family", icon: "flow:users", x: 0.62, y: -0.38 },
+      { id: "d", label: "Assets", icon: "flow:home", x: 0.62, y: 0.38 },
+      { id: "e", label: "Review", icon: "flow:check", x: 0, y: 0.38 },
+      { id: "f", label: "Will ready", icon: "flow:file", x: -0.62, y: 0.38 },
     ],
     edges: [["a", "b"], ["b", "c"], ["c", "d"], ["d", "e"], ["e", "f"]],
-  },
-  {
-    title: "hospital-management-system",
-    url: "next.js + express",
-    nodes: [
-      { id: "ui", label: "Next.js App", sub: "staff screens", x: -0.68, y: -0.1 },
-      { id: "api", label: "Express API", sub: "REST · CRUD", x: 0, y: -0.1 },
-      { id: "db", label: "MongoDB", sub: "hospital records", x: 0.68, y: -0.1 },
-      { id: "pat", label: "Patients", sub: "list · create · edit", x: -0.5, y: 0.55 },
-      { id: "apt", label: "Appointments", sub: "schedule", x: 0.05, y: 0.55 },
-      { id: "bill", label: "Billing", sub: "invoices", x: 0.6, y: 0.55 },
-    ],
-    edges: [["ui", "api"], ["api", "db"], ["api", "pat"], ["api", "apt"], ["api", "bill"]],
   },
 ];
 
@@ -806,19 +837,21 @@ function buildStack(max: number): Model {
   return finalize(pts, max, false);
 }
 
-const NODE_HW = 0.2;
-const NODE_HH = 0.088;
+/** Flow nodes are round icon badges of this radius (unit coords). */
+const NODE_R = 0.125;
 
 const edgeTone = (tag?: string) => (tag === "yes" ? TONE_YES : tag === "no" ? TONE_NO : 4);
 
-function edgeEnds(a: FlowNode, b: FlowNode, hw = NODE_HW) {
+/** Edge between two round nodes, trimmed to start and end at the circles' rims. */
+function edgeEnds(a: FlowNode, b: FlowNode) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const clip = (sx: number, sy: number) => Math.min(hw / Math.max(Math.abs(sx), 1e-6), NODE_HH / Math.max(Math.abs(sy), 1e-6));
-  const ta = clip(dx, dy);
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const gap = NODE_R + 0.015;
   return {
-    x1: a.x + dx * ta, y1: a.y + dy * ta,
-    x2: b.x - dx * ta, y2: b.y - dy * ta,
+    x1: a.x + ux * gap, y1: a.y + uy * gap,
+    x2: b.x - ux * gap, y2: b.y - uy * gap,
   };
 }
 
@@ -842,14 +875,18 @@ function buildFlow(index: number, max: number): Model {
   // Browser-window wireframe
   rect(-1, -0.92, 2, 1.8, 0.03, { tone: 2, alpha: 0.35, size: 1, tag: 1 });
   line(-1, -0.76, 1, -0.76, 0.04, { tone: 2, alpha: 0.25, size: 1, tag: 1 });
-  const hw = f.hw ?? NODE_HW;
   const byId = Object.fromEntries(f.nodes.map((n) => [n.id, n]));
   f.edges.forEach(([a, b, tag]) => {
-    const e = edgeEnds(byId[a], byId[b], hw);
+    const e = edgeEnds(byId[a], byId[b]);
     line(e.x1, e.y1, e.x2, e.y2, 0.02, { tone: edgeTone(tag), alpha: 0.6, size: 1.1, tag: 2 });
   });
   f.nodes.forEach((n) => {
-    rect(n.x - hw, n.y - NODE_HH, hw * 2, NODE_HH * 2, 0.008, { tone: 6, alpha: 0.95, size: 1.3, tag: 0 });
+    // round badge outline
+    const steps = 46;
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      pts.push(pt(n.x + Math.cos(a) * NODE_R, n.y + Math.sin(a) * NODE_R, rand() * 0.01, { tone: 6, alpha: 0.95, size: 1.3, tag: 0 }));
+    }
   });
   return finalize(pts, max, false);
 }
@@ -1289,8 +1326,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
      *  paths → each email node sends (mail icon flies out and fades) → signal to SMS → SMS icon flies out.
      */
     const FLOW_CYCLE = 6;
-    const drawScriptedFlow = (v: View, f: FlowSpec, poly: (pts: [number, number][]) => void) => {
-      const hw = f.hw ?? NODE_HW;
+    const drawScriptedFlow = (v: View, f: FlowSpec) => {
       const byId = Object.fromEntries(f.nodes.map((n) => [n.id, n]));
       const ph = still ? 0.55 : (t % FLOW_CYCLE) / FLOW_CYCLE;
       const seg = (a: number, b: number) => (ph < a || ph > b ? -1 : (ph - a) / (b - a));
@@ -1320,7 +1356,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
 
       // Edges: yes path green, no path red (filter → first node only); everything else default.
       const edgePts = f.edges.map(([a, b, tag]) => {
-        const e = edgeEnds(byId[a], byId[b], hw);
+        const e = edgeEnds(byId[a], byId[b]);
         project(e.x1, e.y1, 0, v);
         const x1 = P.x, y1 = P.y;
         project(e.x2, e.y2, 0, v);
@@ -1358,30 +1394,17 @@ function ParticleStage({ scene }: { scene: Scene }) {
       for (const n of f.nodes) {
         const act = nodeActive(n.id);
         const glow = act >= 0 ? Math.sin(Math.PI * act) : 0;
-        poly([[n.x - hw, n.y - NODE_HH], [n.x + hw, n.y - NODE_HH], [n.x + hw, n.y + NODE_HH], [n.x - hw, n.y + NODE_HH]]);
-        octx.fillStyle = "rgba(11,16,32,0.78)";
-        octx.fill();
-        octx.strokeStyle = glow > 0 ? `rgba(167,139,250,${0.45 + 0.55 * glow})` : "rgba(125,211,252,0.4)";
-        octx.lineWidth = 1 + glow * 1.2;
-        octx.stroke();
-
-        // Icon + text drawn on the window plane, so they tilt with the box.
-        const iconSize = compact ? 15 : 19;
-        const iconUx = n.x - hw + 0.075;
-        if (n.icon) planeIcon(v, n.icon, iconUx, n.y, iconSize, glow > 0 ? "#ddd6fe" : "#7dd3fc");
-        const textUx = n.x + 0.06;
-        const textMaxW = (hw * 2 - 0.15) * v.R - 8;
-        planeText(v, n.label, textUx, n.y, compact ? 10 : 12, glow > 0 ? "#ede9fe" : "#f1f5f9", 600, "center", textMaxW, n.sub ? -6 : 0);
-        if (n.sub) planeText(v, n.sub, textUx, n.y, compact ? 8.5 : 10, "rgba(148,163,184,0.95)", 500, "center", textMaxW, 9);
+        drawFlowNode(v, n, glow);
+        const iconSize = compact ? 24 : 30;
 
         // Trigger fired: expanding outline + "+1 contact" chip rising off the node (both on the plane).
         if (n.id === "t" && act >= 0) {
           const grow = (6 + act * 18) / v.R;
-          planeRect(v, n.x, n.y, hw + grow, NODE_HH + grow);
+          planeCircle(v, n.x, n.y, NODE_R + grow);
           octx.strokeStyle = `rgba(34,211,238,${(1 - act) * 0.7})`;
           octx.lineWidth = 1.5;
           octx.stroke();
-          const chipUy = n.y - NODE_HH - (22 + act * 18) / v.R;
+          const chipUy = n.y - NODE_R - (16 + act * 18) / v.R;
           octx.globalAlpha = blend * Math.sin(Math.PI * act);
           planeRect(v, n.x, chipUy, 56 / v.R, 10 / v.R);
           octx.fillStyle = "rgba(34,197,94,0.16)";
@@ -1398,7 +1421,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
         if (sending >= 0 && n.icon) {
           const side = n.x < 0 ? -1 : 1;
           const k = ease(sending);
-          const startUx = side < 0 ? iconUx : n.x + hw - 0.075;
+          const startUx = n.x;
           const fx = startUx + side * k * ((compact ? 50 : 80) / v.R);
           const fy = n.y - k * ((compact ? 34 : 52) / v.R);
           octx.globalAlpha = blend * (1 - sending);
@@ -1448,6 +1471,36 @@ function ParticleStage({ scene }: { scene: Scene }) {
     /** Icon drawn flat on the tilted plane, centred at (ux, uy). */
     const planeIcon = (v: View, name: string, ux: number, uy: number, size: number, color: string) => {
       onPlane(v, ux, uy, () => drawIcon(name, 0, 0, size, color));
+    };
+
+    /** Circle on the plane (unit coords), returned as a path ready to fill/stroke. */
+    const planeCircle = (v: View, cx: number, cy: number, r: number) => {
+      octx.beginPath();
+      for (let i = 0; i <= 36; i++) {
+        const a = (i / 36) * Math.PI * 2;
+        project(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0, v);
+        if (i === 0) octx.moveTo(P.x, P.y);
+        else octx.lineTo(P.x, P.y);
+      }
+      octx.closePath();
+    };
+
+    /** One round flow node: dark badge, glowing rim when active, big icon, a short label underneath. */
+    const drawFlowNode = (v: View, n: FlowNode, glow: number) => {
+      if (glow > 0) {
+        planeCircle(v, n.x, n.y, NODE_R + (6 + glow * 6) / v.R);
+        octx.fillStyle = `rgba(167,139,250,${0.12 * glow})`;
+        octx.fill();
+      }
+      planeCircle(v, n.x, n.y, NODE_R);
+      octx.fillStyle = "rgba(11,16,32,0.86)";
+      octx.fill();
+      octx.strokeStyle = glow > 0 ? `rgba(167,139,250,${0.5 + 0.5 * glow})` : "rgba(125,211,252,0.45)";
+      octx.lineWidth = 1.2 + glow * 1.2;
+      octx.stroke();
+      const iconSize = (compact ? 24 : 30) * (1 + 0.08 * glow);
+      if (n.icon) planeIcon(v, n.icon, n.x, n.y, iconSize, glow > 0 ? "#ede9fe" : "#7dd3fc");
+      planeText(v, n.label, n.x, n.y + NODE_R, compact ? 10 : 11.5, glow > 0 ? "#ede9fe" : "#cbd5e1", 600, "center", undefined, compact ? 11 : 13);
     };
 
     /** Axis-aligned rectangle on the plane (unit coords), returned as a path ready to fill/stroke. */
@@ -1514,7 +1567,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
       octx.fill();
 
       if (f.script) {
-        drawScriptedFlow(v, f, poly);
+        drawScriptedFlow(v, f);
         return;
       }
 
@@ -1546,18 +1599,10 @@ function ParticleStage({ scene }: { scene: Scene }) {
         }
         if (tag) planeTag(v, (e.x1 + e.x2) / 2, (e.y1 + e.y2) / 2, tag, "196,181,253", false);
       });
-      const textMaxW = NODE_HW * 2 * v.R - 10;
       f.nodes.forEach((n, ni) => {
-        poly([[n.x - NODE_HW, n.y - NODE_HH], [n.x + NODE_HW, n.y - NODE_HH], [n.x + NODE_HW, n.y + NODE_HH], [n.x - NODE_HW, n.y + NODE_HH]]);
-        octx.fillStyle = "rgba(11,16,32,0.72)";
-        octx.fill();
         const on = ni === activeNode;
-        octx.strokeStyle = on ? "rgba(167,139,250,0.95)" : "rgba(125,211,252,0.35)";
-        octx.lineWidth = on ? 1.6 : 1;
-        octx.stroke();
-        // Text on the window plane, shrunk to fit inside the box.
-        planeText(v, n.label, n.x, n.y, compact ? 10 : 12, on ? "#ede9fe" : "#f1f5f9", 600, "center", textMaxW, n.sub ? -6 : 0);
-        if (n.sub) planeText(v, n.sub, n.x, n.y, compact ? 8.5 : 10, "rgba(148,163,184,0.95)", 500, "center", textMaxW, 9);
+        const glow = on ? 0.6 + 0.4 * Math.sin(t * 4) : 0;
+        drawFlowNode(v, n, Math.max(0, glow));
       });
     };
 
@@ -6153,14 +6198,13 @@ function ProjectRow({
 }) {
   const reduce = useReducedMotion();
   return (
-    <motion.li variants={itemVariants} onMouseEnter={onActivate} data-project={index}>
+    <motion.li variants={itemVariants} data-project={index}>
       <TiltCard intensity={active ? 3 : 7} active={active}>
         <article>
           <h3>
             <button
               type="button"
               onClick={onActivate}
-              onFocus={onActivate}
               aria-expanded={active}
               aria-controls={`project-${index}`}
               className="flex w-full cursor-pointer items-center gap-3 p-4 text-left"
