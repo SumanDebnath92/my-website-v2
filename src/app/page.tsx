@@ -2887,6 +2887,7 @@ export default function Home() {
     let pushAtEnd = 0; // downward scroll accumulated while already at the very end (one continuous gesture)
     let lockUntil = performance.now() + 700; // ignore the momentum that brought us here
     let touchY = 0;
+    let touchAtEnd = false; // the swipe began with everything already read
     const panel = () => document.getElementById("stage-scroll");
     const atEnd = () => {
       const sc = panel();
@@ -2917,9 +2918,10 @@ export default function Home() {
     };
     const onTouchStart = (e: TouchEvent) => {
       touchY = e.touches[0].clientY;
+      touchAtEnd = atEnd();
     };
     const onTouchEnd = (e: TouchEvent) => {
-      if (performance.now() < lockUntil || !atEnd()) return;
+      if (performance.now() < lockUntil || !touchAtEnd || !atEnd()) return;
       if (touchY - e.changedTouches[0].clientY > 60) wrap();
     };
     const onKey = (e: KeyboardEvent) => {
@@ -3034,13 +3036,14 @@ export default function Home() {
   // Phones / tablets: graphics band on top except on the globe pages; the game opens full screen instead.
   const mobileBand = scene.kind !== "globe";
   const [mobileGame, setMobileGame] = useState(false);
+  const noGesture = useCallback(() => {}, []);
 
   // Globe screens: a one-time animated tip per mode (hand gestures vs mouse). It closes on ✕, after a while,
   // or once the visitor destroys a satellite.
   const hintMode: "gesture" | "mouse" = gesturesOn ? "gesture" : "mouse";
   // Game guides open only from the "Let's play!" button or the "?" icon — never automatically.
   const [hintSeen, setHintSeen] = useState({ gesture: true, mouse: true });
-  const showGameHint = scene.kind === "globe" && !hintSeen[hintMode] && !gestureIntro && !guideOpen;
+  const showGameHint = (scene.kind === "globe" || mobileGame) && !hintSeen[hintMode] && !gestureIntro && !guideOpen;
   const dismissHint = useCallback(() => setHintSeen((h) => ({ ...h, [hintMode]: true })), [hintMode]);
   const replayHint = useCallback(() => setHintSeen((h) => ({ ...h, [hintMode]: false })), [hintMode]);
   const [startGame, setStartGame] = useState(0);
@@ -3179,10 +3182,12 @@ export default function Home() {
           <HandGestures
           enabled={gesturesOn}
           onEnabledChange={setGesturesOn}
-          onFingers={onFingers}
-          onStep={onStep}
+          // Full-screen game on phones: the hand is for aiming, not for changing pages (the front camera also
+          // sees the finger tapping the screen, which would otherwise jump to page 1 behind the game).
+          onFingers={mobileGame ? noGesture : onFingers}
+          onStep={mobileGame ? noGesture : onStep}
           confirm={gestureFlash}
-          aimMode={scene.kind === "globe"}
+          aimMode={scene.kind === "globe" || mobileGame}
           onTargetModeChange={setTargetMode}
           startGame={startGame}
           stopGame={stopGame}
@@ -5051,9 +5056,9 @@ function MobileGame({
                   <Gamepad2 className="h-5 w-5" aria-hidden />
                 </span>
                 <span>
-                  <span className="block font-mono text-sm font-bold text-amber-100">Double-tap a satellite to destroy it</span>
+                  <span className="block font-mono text-sm font-bold whitespace-nowrap text-amber-100">Double-tap a satellite</span>
                   <span className="block text-xs leading-snug text-amber-200/80">
-                    Tap twice quickly on any satellite circling the globe. Boom! A rocket then launches a new one. How many can you take down?
+                    Tap twice quickly on any satellite circling the globe to destroy it. Boom! A rocket then launches a new one. How many can you take down?
                   </span>
                 </span>
               </div>
@@ -5384,6 +5389,91 @@ function StageScroller({
     if (dy > 60 && g.touchBottom && bottom) handoff(1);
     else if (dy < -60 && g.touchTop && top) handoff(-1);
   };
+
+  // Phones: drive the panel's touch scrolling ourselves. Some mobile browsers (iOS Safari especially) hand a swipe
+  // on this panel to the page — it sits in a fixed, 3D-transformed layer — so the swipe changed the page instead of
+  // scrolling the text. A swipe that starts away from the edge scrolls only the panel (with a little momentum);
+  // a fresh swipe that starts at the end goes on to the next / previous page as before.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let own = false;
+    let decided = false;
+    let atTop = false;
+    let atBottom = false;
+    let lastY = 0;
+    let lastT = 0;
+    let vel = 0; // px per ms, positive = scrolling down
+    let raf = 0;
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    };
+    const onStart = (e: TouchEvent) => {
+      stop();
+      if (e.touches.length !== 1) {
+        own = false;
+        return;
+      }
+      const spacer = el.querySelector<HTMLElement>(":scope > [data-scroll-spacer]")?.offsetHeight ?? 0;
+      own = el.scrollHeight - el.clientHeight - spacer > 4;
+      decided = false;
+      atTop = el.scrollTop <= 2;
+      atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+      lastY = e.touches[0].clientY;
+      lastT = performance.now();
+      vel = 0;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!own) return;
+      if (e.touches.length !== 1) {
+        own = false;
+        return;
+      }
+      const y = e.touches[0].clientY;
+      const dy = lastY - y;
+      if (!decided) {
+        if (Math.abs(dy) < 3) return;
+        decided = true;
+        // Started at the end and pushing past it: let the page move on.
+        if ((dy > 0 && atBottom) || (dy < 0 && atTop)) {
+          own = false;
+          return;
+        }
+      }
+      e.preventDefault();
+      const now = performance.now();
+      el.scrollTop += dy;
+      const dt = Math.max(1, now - lastT);
+      vel = 0.8 * (dy / dt) + 0.2 * vel;
+      lastY = y;
+      lastT = now;
+    };
+    const onEnd = () => {
+      if (!own || !decided) return;
+      own = false;
+      if (performance.now() - lastT > 80) return; // finger had stopped: no coast
+      let v = vel * 16; // px per frame
+      const step = () => {
+        const before = el.scrollTop;
+        el.scrollTop += v;
+        v *= 0.95;
+        raf = Math.abs(v) > 0.4 && el.scrollTop !== before ? requestAnimationFrame(step) : 0;
+      };
+      raf = requestAnimationFrame(step);
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      stop();
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);
 
   const scrollMore = () => {
     const el = ref.current;
