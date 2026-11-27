@@ -48,6 +48,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SVGProps,
@@ -2505,6 +2506,10 @@ function ParticleStage({ scene }: { scene: Scene }) {
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
+      // Phones / tablets: draw the particles at ~30 fps. Motion is time-based (dt), so it keeps the same speed —
+      // this halves the canvas work while scrolling, page changes and taps stay at full frame rate.
+      // (Not while aiming with the hand: the crosshair needs every frame to feel responsive.)
+      if (compact && !handAim.active && now - last < 28) return;
       const dt = Math.min(2.5, (now - last) / 16.67);
       last = now;
       if (w < 10 || h < 10) return;
@@ -2642,11 +2647,13 @@ function ParticleStage({ scene }: { scene: Scene }) {
 
       // Soft smoke: additive glow elsewhere, plain blending over the portrait (no glow stacking on the face).
       ctx.globalCompositeOperation = portraitScene ? "source-over" : "lighter";
-      const smokeEnd = Math.min(N, m.count + 650);
+      // Phones / tablets: about half as many smoke puffs, each a little stronger — same haze, less drawing.
+      const smokeEnd = Math.min(N, m.count + (compact ? 340 : 650));
+      const smokeBoost = compact ? 1.35 : 1;
       for (let i = m.count; i < smokeEnd; i++) {
         // Hero gets bigger, denser smoke puffs; other stages keep the calmer look.
         const size = portraitScene ? 20 + (i % 7) * 6 : 10 + (i % 7) * 3;
-        ctx.globalAlpha = (0.035 + (i % 5) * 0.008) * (portraitScene ? 1.2 : 0.6);
+        ctx.globalAlpha = (0.035 + (i % 5) * 0.008) * (portraitScene ? 1.2 : 0.6) * smokeBoost;
         ctx.drawImage(sprites[ptone[i] < 4 ? 1 : 0], px[i] - size / 2, py[i] - size / 2, size, size);
       }
 
@@ -2753,6 +2760,8 @@ const stageVariants: Variants = {
   enter: (dir: number) => ({ opacity: 0, y: dir * 50, filter: "blur(8px)" }),
   center: {
     opacity: 1, y: 0, filter: "blur(0px)",
+    // Drop the filter once settled: even blur(0px) keeps the whole page on an extra render layer.
+    transitionEnd: { filter: "none" },
     transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1], staggerChildren: 0.06, delayChildren: 0.08 },
   },
   exit: (dir: number) => ({
@@ -2760,6 +2769,30 @@ const stageVariants: Variants = {
     transition: { duration: 0.35, ease: [0.4, 0, 1, 1] },
   }),
 };
+
+/** Phones / tablets: the same slide and fade, without blurring the whole page while it moves (costly on phones). */
+const compactStageVariants: Variants = {
+  enter: (dir: number) => ({ opacity: 0, y: dir * 50 }),
+  center: {
+    opacity: 1, y: 0,
+    transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1], staggerChildren: 0.06, delayChildren: 0.08 },
+  },
+  exit: (dir: number) => ({
+    opacity: 0, y: dir * -40,
+    transition: { duration: 0.35, ease: [0.4, 0, 1, 1] },
+  }),
+};
+
+const COMPACT_QUERY = "(max-width: 1023.98px)";
+function subscribeCompact(cb: () => void) {
+  const mq = window.matchMedia(COMPACT_QUERY);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+/** True on phones / tablets (the stacked layout). */
+function useCompactUI() {
+  return useSyncExternalStore(subscribeCompact, () => window.matchMedia(COMPACT_QUERY).matches, () => false);
+}
 
 const reducedStageVariants: Variants = {
   enter: { opacity: 0 },
@@ -2872,6 +2905,7 @@ export default function Home() {
   const { index, dir, progress } = useStageController();
   const goTo = useGoToStage();
   const reduce = useReducedMotion();
+  const compactUI = useCompactUI();
 
   const [activeGroup, setActiveGroup] = useState(-1);
   const [activeProject, setActiveProject] = useState(0);
@@ -3115,7 +3149,7 @@ export default function Home() {
                   id={STAGES[index].id}
                   aria-label={STAGES[index].title}
                   custom={dir}
-                  variants={reduce ? reducedStageVariants : stageVariants}
+                  variants={reduce ? reducedStageVariants : compactUI ? compactStageVariants : stageVariants}
                   initial="enter"
                   animate="center"
                   exit="exit"
@@ -5056,7 +5090,7 @@ function MobileGame({
               <ArrowRight className="h-4 w-4 rotate-180" aria-hidden />
               Back
             </button>
-            <span className="flex items-center gap-2 rounded-full border border-red-400/30 bg-[rgb(24_8_10/0.6)] px-3 py-2 font-mono text-xs text-red-100 backdrop-blur-md">
+            <span className="flex items-center gap-2 rounded-full border border-red-400/30 bg-[rgb(24_8_10/0.6)] px-3 py-2 font-mono text-xs text-red-100">
               <span className="h-1.5 w-1.5 rounded-full bg-red-400 shadow-[0_0_8px_rgb(248_113_113/0.9)]" />
               Destroyed <span className="font-bold tabular-nums">{String(destroyed).padStart(2, "0")}</span>
             </span>
@@ -5065,7 +5099,7 @@ function MobileGame({
           {/* How to play */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             {gestures && playing ? (
-              <div className="flex max-w-sm items-center gap-3 rounded-2xl border border-amber-300/50 bg-[rgb(40_26_6/0.85)] px-4 py-3 backdrop-blur-md">
+              <div className="flex max-w-sm items-center gap-3 rounded-2xl border border-amber-300/50 bg-[rgb(40_26_6/0.92)] px-4 py-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-bg">
                   <Crosshair className="h-5 w-5" aria-hidden />
                 </span>
@@ -5084,10 +5118,10 @@ function MobileGame({
                   <Hand className="h-4 w-4" aria-hidden />
                   How to play with your hand
                 </button>
-                <span className="rounded-full bg-bg/70 px-3 py-1 text-xs text-fg-soft backdrop-blur">or just double-tap a satellite to destroy it</span>
+                <span className="rounded-full bg-bg/85 px-3 py-1 text-xs text-fg-soft">or just double-tap a satellite to destroy it</span>
               </div>
             ) : (
-              <div className="flex max-w-sm items-center gap-3 rounded-2xl border border-amber-300/40 bg-[rgb(20_14_6/0.8)] px-4 py-3 backdrop-blur-md">
+              <div className="flex max-w-sm items-center gap-3 rounded-2xl border border-amber-300/40 bg-[rgb(20_14_6/0.9)] px-4 py-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-bg">
                   <Gamepad2 className="h-5 w-5" aria-hidden />
                 </span>
@@ -5647,6 +5681,9 @@ const ORB_PALETTES = [
   ["#22d3ee", "#8b5cf6", "#a78bfa"],
 ];
 
+/** Phones / tablets: a soft radial mask instead of a large moving blur filter (same glow, far cheaper to draw). */
+const ORB_SOFT = "max-lg:[mask-image:radial-gradient(closest-side,#000,transparent)]";
+
 function AmbientBackdrop({ progress, stage }: { progress: MotionValue<number>; stage: number }) {
   const reduce = useReducedMotion();
   const p = useSpring(progress, { stiffness: 60, damping: 20 });
@@ -5666,19 +5703,19 @@ function AmbientBackdrop({ progress, stage }: { progress: MotionValue<number>; s
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
       <motion.div
-        className="absolute top-[30%] left-[25%] h-[34rem] w-[34rem] -translate-x-1/2 rounded-full opacity-[0.12] blur-[120px]"
+        className={`absolute top-[30%] left-[25%] h-[34rem] w-[34rem] -translate-x-1/2 rounded-full opacity-[0.12] lg:blur-[120px] ${ORB_SOFT}`}
         style={{ y: farY, scale: farScale }}
         animate={{ backgroundColor: c3 }}
         transition={{ duration: 1.2 }}
       />
       <motion.div
-        className="absolute bottom-[-10%] left-[30%] h-[22rem] w-[22rem] rounded-full opacity-[0.12] blur-[100px]"
+        className={`absolute bottom-[-10%] left-[30%] h-[22rem] w-[22rem] rounded-full opacity-[0.12] lg:blur-[100px] ${ORB_SOFT}`}
         style={{ y: midY }}
         animate={{ backgroundColor: c2 }}
         transition={{ duration: 1.2 }}
       />
       <motion.div
-        className="absolute top-[-8%] left-[-8%] h-[22rem] w-[22rem] rounded-full opacity-[0.18] blur-[90px]"
+        className={`absolute top-[-8%] left-[-8%] h-[22rem] w-[22rem] rounded-full opacity-[0.18] lg:blur-[90px] ${ORB_SOFT}`}
         style={{ y: nearY, x: nearX, scale: nearScale }}
         animate={{ backgroundColor: c1 }}
         transition={{ duration: 1.2 }}
@@ -5734,7 +5771,7 @@ function NebulaSmoke({ vivid }: { vivid: boolean }) {
       {NEBULAE.map((n, i) => (
         <motion.div
           key={i}
-          className={`absolute rounded-[50%] blur-[70px] ${n.cls}`}
+          className={`absolute rounded-[50%] lg:blur-[70px] ${n.cls}`}
           style={{ background: `radial-gradient(closest-side, ${n.c}, transparent)` }}
           animate={reduce ? undefined : { x: n.x, y: n.y, scale: [1, 1.15, 0.95, 1], rotate: [0, 25, -15, 0] }}
           transition={{ duration: n.d, repeat: Infinity, ease: "easeInOut" }}
@@ -5904,7 +5941,7 @@ function SceneCaption({
         <motion.div
           key={c.k}
           initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
           exit={{ opacity: 0, y: -8, filter: "blur(4px)" }}
           transition={{ duration: 0.35 }}
           className="glass flex max-w-full min-w-0 items-center gap-3 rounded-full px-4 py-2 font-mono text-[11px]"

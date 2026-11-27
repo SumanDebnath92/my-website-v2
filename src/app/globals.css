@@ -76,6 +76,15 @@ body {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.06),
     0 20px 50px -20px rgb(0 0 0 / 0.6);
+
+  /* Phones / tablets: no live backdrop blur. The background behind the cards (stars, nebula, particles) moves
+     every frame, so every glass card re-blurred every frame — the main cause of lag on phones. A slightly
+     more opaque dark tint gives the same frosted look for a fraction of the cost. */
+  @media (max-width: 1023.98px) {
+    background: linear-gradient(145deg, rgb(22 28 44 / 0.78), rgb(12 16 28 / 0.72));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 @utility glow-text {
