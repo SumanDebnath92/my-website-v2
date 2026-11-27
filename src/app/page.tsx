@@ -3139,7 +3139,7 @@ export default function Home() {
                           // makes room for the gesture window in the top-right corner — smaller text, kept clear of it.
                           // Everything below the heading stays full width.
                           gesturesOn && !mobileBand
-                            ? "max-lg:[&>div>h2:first-of-type]:pr-[7.5rem] max-lg:[&>div>h2:first-of-type]:text-[1.625rem] max-lg:[&>div>h2:first-of-type]:leading-[1.15] sm:max-lg:[&>div>h2:first-of-type]:pr-[9.5rem] sm:max-lg:[&>div>h2:first-of-type]:text-[2rem]"
+                            ? "max-lg:[&>div>h2:first-of-type]:pr-[8.25rem] max-lg:[&>div>h2:first-of-type]:text-[1.625rem] max-lg:[&>div>h2:first-of-type]:leading-[1.15] sm:max-lg:[&>div>h2:first-of-type]:pr-[9.5rem] sm:max-lg:[&>div>h2:first-of-type]:text-[2rem]"
                             : ""
                         }`}
                       >
@@ -3637,6 +3637,19 @@ function HandGestures({
   const aiming = live.fingers === TOKEN_AIM;
   const fist = live.fingers === TOKEN_FIST;
   const thumbToken = live.fingers >= 100 && !aiming && !fist ? live.fingers : 0;
+  const phoneStatus =
+    status === "loading" ? "Loading…"
+      : status === "denied" ? "Camera blocked"
+        : status === "error" ? "Tap to retry"
+          : confirm ? `Moved to ${confirm.label}`
+            : fist ? (live.hold < 1 ? "Hold to exit…" : "Game mode off")
+              : aiming ? "Pinch to destroy"
+                : targetMode ? "Game mode on"
+                  : !live.seen ? "Show your hand"
+                    : thumbToken === TOKEN_THUMB_DOWN ? "Next ↓"
+                      : thumbToken === TOKEN_THUMB_UP ? "Back ↑"
+                        : target ? (live.fired === live.fingers ? `On ${target.label}` : `Hold → ${target.label}`)
+                          : "Show 1–5 fingers";
   const toggleLabel =
     status === "loading" ? "Starting camera…"
       : active ? "Hand gestures on"
@@ -3650,7 +3663,7 @@ function HandGestures({
       <div
         className={`glass relative overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-300 sm:w-36 ${
           // Phones: a smaller window with a near-solid backdrop, so the graphics behind it don't show through.
-          enabled ? "w-28 max-sm:bg-bg/90 sm:w-36" : ""
+          enabled ? "w-32 max-sm:bg-bg/90 sm:w-36" : ""
         } ${
           confirm
             ? "border-primary/70 shadow-[0_0_28px_-4px_rgb(34_211_238/0.7)]"
@@ -3667,11 +3680,11 @@ function HandGestures({
         aria-pressed={enabled}
         aria-label={toggleLabel}
         title={toggleLabel}
-        className={`group flex h-10 w-full cursor-pointer items-center justify-between gap-2 pr-3 pl-2.5 font-mono sm:justify-start text-[11px] tracking-wide transition-colors duration-300 ${
+        className={`group flex h-10 w-full cursor-pointer items-center gap-1.5 pr-2.5 pl-2 font-mono text-[11px] tracking-wide transition-colors duration-300 sm:gap-2 sm:pr-3 sm:pl-2.5 ${
           active ? "text-fg" : "text-muted hover:text-fg-soft"
         }`}
       >
-        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
+        <span className="relative flex h-6 w-5 shrink-0 items-center justify-center sm:w-6">
           {status === "loading" ? (
             <LoaderCircle className="h-4 w-4 animate-spin text-primary" aria-hidden />
           ) : status === "denied" || status === "error" ? (
@@ -3681,8 +3694,12 @@ function HandGestures({
           )}
           {active && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 animate-pulse rounded-full bg-success" />}
         </span>
-        {/* Phones: the window is too narrow for the label next to the switch, so it shows only the icon and switch. */}
-        <span className="hidden flex-1 text-left sm:inline">Gestures</span>
+        {/* Phones: small label while the window is open (the closed pill is just the icon and switch). */}
+        <span
+          className={`${enabled ? "inline" : "hidden"} min-w-0 flex-1 text-left text-[9px] tracking-normal sm:inline sm:text-[11px] sm:tracking-wide`}
+        >
+          Gestures
+        </span>
         <span
           aria-hidden
           className={`relative h-4 w-7 shrink-0 rounded-full border transition-colors duration-300 ${
@@ -3721,18 +3738,19 @@ function HandGestures({
               <canvas ref={overlayRef} width={320} height={240} className="absolute inset-0 h-full w-full -scale-x-100" />
               {status === "on" && !live.seen && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-primary/50">
-                  <FingersIcon count={5} className="h-9 w-9" />
-                  <span className="font-mono text-[10px] text-muted">Show your hand</span>
+                  <FingersIcon count={5} className="h-8 w-8 sm:h-9 sm:w-9" />
+                  {/* Phones: this message moves to the status row under the preview. */}
+                  <span className="hidden font-mono text-[10px] text-muted sm:inline">Show your hand</span>
                 </div>
               )}
               {status === "loading" && (
-                <div className="absolute inset-0 flex items-center justify-center gap-2 font-mono text-[10px] text-fg-soft">
+                <div className="absolute inset-0 hidden items-center justify-center gap-2 font-mono text-[10px] text-fg-soft sm:flex">
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden />
                   Loading…
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-center gap-1.5 px-2 py-1 sm:justify-start sm:py-1.5" aria-live="polite">
+            <div className="flex items-center gap-1.5 px-2 py-1 sm:py-1.5" aria-live="polite">
               <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
                 {confirm && (
                   <motion.span
@@ -3767,6 +3785,8 @@ function HandGestures({
                   <span className="font-mono text-sm font-bold text-fg">{live.fingers || "–"}</span>
                 )}
               </span>
+              {/* Phones: one short line of status. */}
+              <span className="min-w-0 flex-1 truncate text-[10px] leading-tight text-fg-soft sm:hidden">{phoneStatus}</span>
               <span className="hidden min-w-0 flex-1 font-mono text-[10px] leading-tight whitespace-nowrap sm:block">
                 {confirm ? (
                   <>
