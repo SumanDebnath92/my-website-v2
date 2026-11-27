@@ -2512,7 +2512,7 @@ function ParticleStage({ scene }: { scene: Scene }) {
       if (compact && !handAim.active && now - last < 28) return;
       // Phones: pause while the text panel is being swipe-scrolled — both run on the same thread, and the
       // scroll should win. The settled particles barely move, so the pause isn't noticeable.
-      if (compact && touchScroll.active) {
+      if (compact && (touchScroll.active || now < uiBusy.until)) {
         last = now;
         return;
       }
@@ -3062,25 +3062,53 @@ export default function Home() {
         return;
       }
       const pad = 52; // clears the panel's soft top fade
+      // Particles hold still through the scroll and the open, then morph into the new project's diagram.
+      uiBusy.until = performance.now() + 1100;
       const offset = () => el.getBoundingClientRect().top - (sc.getBoundingClientRect().top + pad);
+      // Near the end of the list there may not be enough room to bring the title to the top. Add just enough
+      // temporary space at the bottom so the scroll can get there, and trim it back once the project is open.
+      const BASE_PAD = 12; // the panel's own bottom padding (py-3)
+      const extraPad = () => Math.max(0, (parseFloat(sc.style.paddingBottom) || BASE_PAD) - BASE_PAD);
+      const makeRoom = (target: number) => {
+        // Only ever grow the space here (shrinking it mid-scroll would shift the list); trimRoom shrinks it later.
+        const max = sc.scrollHeight - sc.clientHeight - extraPad();
+        const need = Math.ceil(target - max) + 2;
+        if (need > extraPad()) sc.style.paddingBottom = `${BASE_PAD + need}px`;
+      };
+      const trimRoom = () => {
+        const max = sc.scrollHeight - sc.clientHeight - extraPad();
+        const need = sc.scrollTop - max;
+        sc.style.paddingBottom = need > 0 ? `${BASE_PAD + Math.ceil(need)}px` : "";
+      };
       const openInPlace = () => {
         setActiveProject(i);
         const t0 = performance.now();
         const hold = () => {
+          // Keep the title at the top while the previous project (above, off screen) closes and this one opens.
+          // Pushed up (the project above closing): correct at once. Still a little low: ease the rest of the way.
           const d = offset();
-          // Title pushed up (the project above is closing): correct at once so it stays put.
-          // Title still below its spot (near the end of the list there was no room to scroll before opening):
-          // glide it up as the new project opens and makes room.
           if (d < -0.5) sc.scrollTop += d;
-          else if (d > 0.5) sc.scrollTop += Math.max(0.5, d * 0.2);
-          if (performance.now() - t0 < 800) requestAnimationFrame(hold);
+          else if (d > 0.5) sc.scrollTop += Math.max(0.5, d * 0.3);
+          if (performance.now() - t0 < 450) requestAnimationFrame(hold);
+          else trimRoom();
         };
         requestAnimationFrame(hold);
       };
       const d = offset();
       if (Math.abs(d) > 2) {
+        makeRoom(sc.scrollTop + d);
         sc.scrollBy({ top: d, behavior: "smooth" });
-        window.setTimeout(openInPlace, 380);
+        // Open once the scroll has actually finished (title in place, or the scroll stopped), at most ~0.8 s.
+        const t0 = performance.now();
+        let lastTop = sc.scrollTop;
+        let still = 0;
+        const wait = () => {
+          still = Math.abs(sc.scrollTop - lastTop) < 0.5 ? still + 1 : 0;
+          lastTop = sc.scrollTop;
+          if (Math.abs(offset()) < 2 || still >= 3 || performance.now() - t0 > 800) openInPlace();
+          else requestAnimationFrame(wait);
+        };
+        requestAnimationFrame(wait);
       } else openInPlace();
     },
     [compactUI, scrollPanelTo],
@@ -3347,6 +3375,8 @@ const FIST_HOLD_MS = 500;
 const handAim = { active: false, x: 0.5, y: 0.5, fire: 0, at: 0 };
 /** Phones: true while the visitor is swipe-scrolling the text panel (the particles pause so scrolling stays smooth). */
 const touchScroll = { active: false };
+/** Phones: the particles hold still until this time (e.g. while a project scrolls into view and opens). */
+const uiBusy = { until: 0 };
 const AIM_DETECT_INTERVAL_MS = 33; // ~30 detections per second while aiming
 
 /** One Euro filter: smooths jitter when the hand is still, stays responsive when it moves fast. */
@@ -6639,6 +6669,38 @@ function ProjectRow({
   onActivate: () => void;
 }) {
   const reduce = useReducedMotion();
+  const instant = useCompactUI();
+  const details = (
+    <div className="px-4 pb-4">
+      <p className="text-[13px] leading-relaxed text-fg-soft">{p.summary}</p>
+      {p.features && (
+        <ul className="mt-3 grid gap-2">
+          {p.features.map((f) => (
+            <li key={f.title} className="rounded-xl border-l-2 border-primary/60 bg-white/[0.03] px-3 py-2">
+              <p className="text-[13px] font-semibold text-fg">{f.title}</p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-soft">{f.text}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {p.tags.map((t) => (
+          <Tag key={t}>{t}</Tag>
+        ))}
+        {p.url && (
+          <a
+            href={p.url.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto inline-flex min-h-9 items-center gap-1 rounded-full px-2 font-mono text-[11px] text-primary transition-colors duration-200 hover:text-fg"
+          >
+            {p.url.label}
+            <ArrowUpRight className="h-3 w-3" aria-hidden />
+          </a>
+        )}
+      </div>
+    </div>
+  );
   return (
     <motion.li variants={itemVariants} data-project={index}>
       <TiltCard intensity={active ? 3 : 7} active={active}>
@@ -6666,48 +6728,35 @@ function ProjectRow({
               />
             </button>
           </h3>
-          <AnimatePresence initial={false}>
-            {active && (
+          {instant ? (
+            // Phones / tablets: open in one step with a soft fade. Animating the height re-lays out the whole list
+            // every frame, which is slow on phones; the title is already at the top, so nothing visible jumps.
+            active && (
               <motion.div
                 id={`project-${index}`}
-                initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-                animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
-                exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
               >
-                <div className="px-4 pb-4">
-                  <p className="text-[13px] leading-relaxed text-fg-soft">{p.summary}</p>
-                  {p.features && (
-                    <ul className="mt-3 grid gap-2">
-                      {p.features.map((f) => (
-                        <li key={f.title} className="rounded-xl border-l-2 border-primary/60 bg-white/[0.03] px-3 py-2">
-                          <p className="text-[13px] font-semibold text-fg">{f.title}</p>
-                          <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-soft">{f.text}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                    {p.tags.map((t) => (
-                      <Tag key={t}>{t}</Tag>
-                    ))}
-                    {p.url && (
-                      <a
-                        href={p.url.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-auto inline-flex min-h-9 items-center gap-1 rounded-full px-2 font-mono text-[11px] text-primary transition-colors duration-200 hover:text-fg"
-                      >
-                        {p.url.label}
-                        <ArrowUpRight className="h-3 w-3" aria-hidden />
-                      </a>
-                    )}
-                  </div>
-                </div>
+                {details}
               </motion.div>
-            )}
-          </AnimatePresence>
+            )
+          ) : (
+            <AnimatePresence initial={false}>
+              {active && (
+                <motion.div
+                  id={`project-${index}`}
+                  initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                  animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+                  exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                  className="overflow-hidden"
+                >
+                  {details}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          )}
         </article>
       </TiltCard>
     </motion.li>
