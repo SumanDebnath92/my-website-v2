@@ -5557,6 +5557,7 @@ function StageScroller({
     if (!el) return;
     let own = false;
     let decided = false;
+    let edge = false; // this swipe started at the end and pushes past it: it changes the page
     let atTop = false;
     let atBottom = false;
     let lastY = 0;
@@ -5577,6 +5578,7 @@ function StageScroller({
       const spacer = el.querySelector<HTMLElement>(":scope > [data-scroll-spacer]")?.offsetHeight ?? 0;
       own = el.scrollHeight - el.clientHeight - spacer > 4;
       decided = false;
+      edge = false;
       atTop = el.scrollTop <= 2;
       atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
       lastY = e.touches[0].clientY;
@@ -5594,13 +5596,13 @@ function StageScroller({
       if (!decided) {
         if (Math.abs(dy) < 3) return;
         decided = true;
-        // Started at the end and pushing past it: let the page move on.
-        if ((dy > 0 && atBottom) || (dy < 0 && atTop)) {
-          own = false;
-          return;
-        }
+        // Started at the end and pushing past it: this swipe changes the page (onTouchEnd → next / previous).
+        // Keep the browser out of it — on phones its own page scroll started too, fought the page change and
+        // snapped back, leaving you on the same page.
+        if ((dy > 0 && atBottom) || (dy < 0 && atTop)) edge = true;
       }
       e.preventDefault();
+      if (edge) return;
       touchScroll.active = true;
       const now = performance.now();
       el.scrollTop += dy;
@@ -5610,8 +5612,9 @@ function StageScroller({
       lastT = now;
     };
     const onEnd = () => {
-      if (!own || !decided) {
+      if (!own || !decided || edge) {
         touchScroll.active = false;
+        own = false;
         return;
       }
       own = false;
